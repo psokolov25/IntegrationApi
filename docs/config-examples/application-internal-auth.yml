@@ -1,0 +1,7 @@
+integration:
+  security-mode: INTERNAL
+  internal-signing-key: "change-me"
+  internal-clients:
+    - client-id: integration-admin
+      client-secret: strong-secret
+      permissions: ["queue-view", "queue-call", "queue-aggregate", "metrics-view", "event-process"]

@@ -1,0 +1,14 @@
+@startuml
+title Pluggable security architecture (roadmap)
+interface IdentityProvider
+interface AuthenticationService
+interface AuthorizationService
+class ApiKeyAuthService
+class KeycloakIdentityProvider
+class InternalIdentityProvider
+AuthenticationService --> IdentityProvider
+AuthorizationService --> AuthenticationService
+ApiKeyAuthService ..|> AuthenticationService
+KeycloakIdentityProvider ..|> IdentityProvider
+InternalIdentityProvider ..|> IdentityProvider
+@enduml

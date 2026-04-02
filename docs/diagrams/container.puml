@@ -1,0 +1,16 @@
+@startuml
+title Контейнерная диаграмма этапа 1
+node "integration-api" {
+  component "GatewayController"
+  component "ApiKeyFilter"
+  component "RoutingService"
+  component "GatewayService"
+  component "QueueCache"
+  component "VisitManagerClient"
+}
+database "PostgreSQL (flyway schema)" as pg
+cloud "VisitManager" as vm
+GatewayService --> VisitManagerClient
+VisitManagerClient --> vm
+integration-api --> pg : flyway/audit/idempotency (next)
+@enduml

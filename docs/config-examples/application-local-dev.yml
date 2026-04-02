@@ -1,0 +1,10 @@
+integration:
+  api-keys: ["dev-api-key"]
+  queue-cache-ttl: 15s
+  visit-managers:
+    - id: vm-main
+      base-url: http://localhost:8081
+      region-id: dev
+      active: true
+  branch-routing:
+    BR-001: vm-main
