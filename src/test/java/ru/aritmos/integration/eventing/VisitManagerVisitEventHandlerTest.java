@@ -17,6 +17,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
@@ -118,5 +119,86 @@ class VisitManagerVisitEventHandlerTest {
 
         var state = gatewayService.getBranchState("subject", "BR-502", "vm-main");
         Assertions.assertEquals("PAUSED", state.status(), "второй refresh должен быть пропущен в debounce-окне");
+    }
+
+    @Test
+    void shouldIgnoreOutOfOrderVisitEventAfterNewerProcessedEvent() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+        cfg.setBranchRouting(Map.of("BR-503", "vm-main"));
+        cfg.setBranchStateEventRefreshDebounce(Duration.ofMillis(500));
+
+        StubVisitManagerClient client = new StubVisitManagerClient(cfg);
+        GatewayService gatewayService = new GatewayService(
+                new RoutingService(cfg),
+                client,
+                new QueueCache(cfg),
+                new BranchStateCache(cfg),
+                new AuditService(),
+                new VisitManagerMetricsService()
+        );
+        MutableClock clock = new MutableClock(Instant.parse("2026-02-01T15:00:00Z"));
+        VisitManagerVisitEventHandler handler = new VisitManagerVisitEventHandler(
+                gatewayService,
+                new VisitManagerBranchStateEventMapper(),
+                cfg,
+                clock
+        );
+
+        client.updateBranchState("vm-main", "BR-503",
+                new BranchStateUpdateRequest("OPEN", "09:00-18:00", 3, "vm-new"));
+        handler.handle(new IntegrationEvent(
+                "evt-visit-503-new",
+                "VISIT_CALLED",
+                "vm-main",
+                Instant.parse("2026-02-01T15:00:10Z"),
+                Map.of("visit", Map.of("branchId", "BR-503"))
+        ));
+
+        clock.setCurrent(Instant.parse("2026-02-01T15:00:02Z"));
+        client.updateBranchState("vm-main", "BR-503",
+                new BranchStateUpdateRequest("CLOSED", "09:00-18:00", 0, "vm-old"));
+        handler.handle(new IntegrationEvent(
+                "evt-visit-503-old",
+                "VISIT_CALLED",
+                "vm-main",
+                Instant.parse("2026-02-01T15:00:05Z"),
+                Map.of("visit", Map.of("branchId", "BR-503"))
+        ));
+
+        var state = gatewayService.getBranchState("subject", "BR-503", "vm-main");
+        Assertions.assertEquals("OPEN", state.status(), "более старое событие не должно перезатирать более новое");
+        Assertions.assertEquals("vm-new", state.updatedBy());
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant current;
+
+        private MutableClock(Instant initial) {
+            this.current = initial;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return current;
+        }
+
+        private void setCurrent(Instant current) {
+            this.current = current;
+        }
     }
 }

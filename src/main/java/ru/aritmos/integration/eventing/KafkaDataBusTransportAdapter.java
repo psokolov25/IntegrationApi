@@ -13,9 +13,16 @@ public class KafkaDataBusTransportAdapter implements EventTransportAdapter {
 
     private static final Logger LOG = LoggerFactory.getLogger(KafkaDataBusTransportAdapter.class);
     private final IntegrationGatewayConfiguration configuration;
+    private final ExternalSystemAudienceResolver audienceResolver;
 
     public KafkaDataBusTransportAdapter(IntegrationGatewayConfiguration configuration) {
+        this(configuration, new DefaultExternalSystemAudienceResolver());
+    }
+
+    KafkaDataBusTransportAdapter(IntegrationGatewayConfiguration configuration,
+                                 ExternalSystemAudienceResolver audienceResolver) {
         this.configuration = configuration;
+        this.audienceResolver = audienceResolver;
     }
 
     @Override
@@ -23,9 +30,11 @@ public class KafkaDataBusTransportAdapter implements EventTransportAdapter {
         if (!configuration.getEventing().getKafka().isEnabled()) {
             return;
         }
-        LOG.info("EVENT_PUBLISHED topic={} eventId={} type={}",
+        LOG.info("EVENT_MEDIATED topic={} eventId={} type={} source={} targets={}",
                 configuration.getEventing().getKafka().getOutboundTopic(),
                 event.eventId(),
-                event.eventType());
+                event.eventType(),
+                event.source(),
+                String.join(",", audienceResolver.resolve(event)));
     }
 }

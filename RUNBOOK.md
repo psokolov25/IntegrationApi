@@ -13,6 +13,12 @@
    - убедиться, что debounce не подавляет нужные refresh.
 5. После любых изменений в коде integration/eventing — запуск `mvn test`.
 
+### Итерационный playbook развития фич
+1. **Широкий проход (foundation):** покрыть базовой реализацией все ключевые группы фич (gateway, eventing, security, programmable, client-policy, observability), сохраняя рабочее состояние.
+2. **Углубление по группам:** в каждой следующей итерации брать одну группу фич и усиливать детали (контракты, edge-cases, тесты, эксплуатация).
+3. **Полный цикл:** когда углубление завершено по всем группам, возвращаться к новому широкому проходу и повторять цикл.
+4. **Критерий готовности итерации:** функциональность группы работает end-to-end, покрыта unit/integration-тестами, а эксплуатационные шаги отражены в этом runbook.
+
 ## Базовые проверки
 - Health: `GET /health`
 - Liveness: `GET /health/liveness`
@@ -61,11 +67,14 @@
 - Проверить `integration.security-mode` и permissions (`event-process` для eventing API).
 - При анализе ошибок использовать поля `code/status/method/path/traceId` из `ErrorResponse`.
 - Для совместимости с VisitManager сверять текущие контракты по `openapi.yml` (ветка `dev`).
+- Для сценариев посредника (VisitManager → АРМ/приемная) проверять `meta.targetSystems` в payload и соответствие ожидаемым получателям.
 
 ## Инциденты
 - DLQ растет: проверить handler для `eventType` и валидацию payload.
 - Branch-state «застывает»: проверить, что приходят события `branch-state-updated`/`VISIT_*`, и нет ли слишком большого debounce-окна.
 - Branch-state «скачет назад»: проверить out-of-order события и `updatedAt` в payload.
+- Для `VISIT_*` убедиться, что `occurredAt` монотонно возрастает в рамках пары `visitManagerId + branchId`; более старые события должны игнорироваться.
+- Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
 - Для точечного восстановления обработать событие через `POST /api/v1/events/replay-dlq/{eventId}`.
 - Для массового восстановления использовать `POST /api/v1/events/replay-dlq?limit=N`.
 - Для ручной очистки «залипших» событий использовать `DELETE /api/v1/events/dlq/{eventId}` или `DELETE /api/v1/events/dlq`.
