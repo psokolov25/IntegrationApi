@@ -1,0 +1,15 @@
+@startuml
+title Схема маршрутизации
+start
+:Получить branchId/target;
+if (target задан?) then (да)
+  :Выбрать target;
+else (нет)
+  if (Есть mapping branch->vm?) then (да)
+    :Выбрать mapped vm;
+  else (нет)
+    :Выбрать первый active vm;
+  endif
+endif
+stop
+@enduml

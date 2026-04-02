@@ -1,0 +1,15 @@
+integration:
+  api-keys: ["local-key"]
+  queue-cache-ttl: 20s
+  visit-managers:
+    - id: vm-central
+      base-url: http://vm-central:8080
+      region-id: ru-central
+      active: true
+    - id: vm-north
+      base-url: http://vm-north:8080
+      region-id: ru-north
+      active: true
+  branch-routing:
+    BR-001: vm-central
+    BR-900: vm-north

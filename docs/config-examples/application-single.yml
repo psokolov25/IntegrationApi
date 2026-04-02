@@ -1,0 +1,10 @@
+integration:
+  api-keys: ["local-key"]
+  queue-cache-ttl: 30s
+  visit-managers:
+    - id: vm-main
+      base-url: http://visitmanager-main:8080
+      region-id: ru-central
+      active: true
+  branch-routing:
+    BR-001: vm-main

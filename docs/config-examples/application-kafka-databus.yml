@@ -1,0 +1,8 @@
+integration:
+  eventing:
+    enabled: true
+    max-retries: 3
+    kafka:
+      enabled: true
+      inbound-topic: databus.inbound
+      outbound-topic: databus.outbound

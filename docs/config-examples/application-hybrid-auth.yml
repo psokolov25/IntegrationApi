@@ -1,0 +1,10 @@
+integration:
+  security-mode: HYBRID
+  keycloak:
+    issuer: "https://keycloak.local/realms/suo"
+    audience: "integration-api"
+    shared-secret: "dev-keycloak-secret"
+  local-subject-permissions:
+    service-account-integrations:
+      - queue-aggregate
+      - metrics-view

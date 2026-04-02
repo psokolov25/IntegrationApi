@@ -1,0 +1,10 @@
+@startuml
+title Контекстная диаграмма Integration API
+actor "Внешние системы" as ext
+rectangle "Integration API" as api
+rectangle "VisitManager #1..N" as vm
+queue "Kafka/DataBus (этап 6)" as kb
+ext --> api : REST API
+api --> vm : normalized/proxy calls
+kb --> api : events (future)
+@enduml

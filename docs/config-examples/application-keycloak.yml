@@ -1,0 +1,6 @@
+integration:
+  security-mode: KEYCLOAK
+  keycloak:
+    issuer: "https://keycloak.local/realms/suo"
+    audience: "integration-api"
+    shared-secret: "dev-keycloak-secret"

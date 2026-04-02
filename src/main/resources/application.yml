@@ -1,0 +1,64 @@
+micronaut:
+  application:
+    name: integration-api
+
+integration:
+  security-mode: API_KEY
+  internal-signing-key: dev-signing-key
+  internal-clients:
+    - client-id: integration-admin
+      client-secret: integration-secret
+      permissions: ["queue-view", "queue-call", "queue-aggregate", "metrics-view", "event-process"]
+  keycloak:
+    issuer: ""
+    audience: ""
+    shared-secret: dev-keycloak-secret
+  local-subject-permissions: {}
+  api-keys:
+    - dev-api-key
+  programmable-api:
+    enabled: true
+    endpoints:
+      - id: queuesByBranch
+        operation: FETCH_QUEUES
+        required-permission: queue-view
+      - id: aggregateQueues
+        operation: AGGREGATE_QUEUES
+        required-permission: queue-aggregate
+  client-policy:
+    retry-attempts: 2
+    timeout-millis: 1000
+    circuit-failure-threshold: 3
+    circuit-open-seconds: 10
+  eventing:
+    enabled: true
+    max-retries: 2
+    max-payload-fields: 100
+    max-future-skew-seconds: 300
+    dlq-warn-threshold: 10
+    duplicate-warn-threshold: 50
+    max-dlq-events: 5000
+    max-processed-events: 20000
+    retention-seconds: 604800
+    snapshot-import-max-events: 50000
+    snapshot-import-require-matching-processed-keys: true
+    snapshot-import-reject-cross-list-duplicates: true
+    kafka:
+      enabled: false
+      inbound-topic: integration.inbound
+      outbound-topic: integration.outbound
+  queue-cache-ttl: 30s
+  visit-managers:
+    - id: vm-main
+      base-url: http://localhost:8081
+      region-id: ru-central
+      active: true
+    - id: vm-backup
+      base-url: http://localhost:8082
+      region-id: ru-backup
+      active: true
+  branch-routing:
+    BR-001: vm-main
+  branch-fallback-routing:
+    BR-001: vm-backup
+  simulated-unavailable-targets: []

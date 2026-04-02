@@ -1,0 +1,10 @@
+integration:
+  programmable-api:
+    enabled: true
+    endpoints:
+      - id: queuesByBranch
+        operation: FETCH_QUEUES
+        required-permission: queue-view
+      - id: aggregateQueues
+        operation: AGGREGATE_QUEUES
+        required-permission: queue-aggregate
