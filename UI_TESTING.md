@@ -20,11 +20,16 @@
   - загрузка `/ui/`;
   - контроль отсутствия `console.error`;
   - базовая проверка редактора Groovy и debug payload.
+- `ui-tests/screenshot.spec.mjs` — обязательный захват скриншота UI:
+  - сохраняет `cache/ui-tools/playwright-artifacts/ui-console.png`;
+  - используется после smoke для визуальной валидации текущего состояния GUI.
 - `scripts/run-ui-smoke.sh` — автоматический прогон:
   1. запуск Integration API;
   2. ожидание readiness;
   3. установка playwright + chromium;
-  4. запуск smoke-тестов.
+  4. запуск smoke-тестов;
+  5. обязательный capture скриншота UI;
+  6. API smoke.
 
 ## Полезные ссылки
 
@@ -40,4 +45,3 @@
   - outbox flush flow (UI -> API -> визуальное обновление);
   - визуальной регрессии (snapshot/скриншот сравнения);
   - интеграции с консольными логами браузера и network error budget.
-

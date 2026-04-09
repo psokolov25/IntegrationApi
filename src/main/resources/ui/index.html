@@ -17,12 +17,21 @@
         <select id="languageSelect"></select>
         <label for="apiKeyInput" data-i18n="apikey">X-API-KEY</label>
         <input id="apiKeyInput" placeholder="dev-api-key"/>
+        <label class="checkbox-row compact-checkbox"><input id="anonymousModeInput" type="checkbox"/><span data-i18n="anonymousMode">Анонимный режим (dev)</span></label>
         <button id="saveApiKeyBtn" data-i18n="save">Сохранить</button>
     </div>
 </header>
 
 <main class="layout">
-    <section class="panel">
+    <nav class="tabs-nav panel" aria-label="UI sections">
+        <button class="tab-btn active" data-tab-target="eventing" data-i18n="tabEventing">Eventing & DataBus</button>
+        <button class="tab-btn" data-tab-target="scripts" data-i18n="tabScripts">Скрипты и обработчики</button>
+        <button class="tab-btn" data-tab-target="templates" data-i18n="tabTemplates">Шаблоны и snapshot</button>
+        <button class="tab-btn" data-tab-target="connectors" data-i18n="tabConnectors">Коннекторы и inbound</button>
+        <button class="tab-btn" data-tab-target="ux" data-i18n="tabUx">UX анализ</button>
+    </nav>
+
+    <section class="panel tab-panel" data-tab-panel="eventing">
         <h2 data-i18n="dashboard">Дашборд eventing</h2>
         <div class="cards" id="statsCards"></div>
         <div class="actions-row">
@@ -60,8 +69,11 @@
         <pre id="eventOpsResultView" class="mono"></pre>
     </section>
 
-    <section class="panel">
+    <section class="panel tab-panel" data-tab-panel="eventing">
         <h2 data-i18n="control">Контрольная панель</h2>
+        <div class="form-grid">
+            <label><span data-i18n="eventSearch">Поиск по очередям/журналу</span> <input id="eventSearchInput" placeholder="eventId / branchId / error"/></label>
+        </div>
         <div class="split">
             <div>
                 <h3 data-i18n="dlqTop">DLQ (top 20)</h3>
@@ -78,7 +90,7 @@
         </div>
     </section>
 
-    <section class="panel">
+    <section class="panel tab-panel" data-tab-panel="scripts">
         <h2 data-i18n="groovyEditor">Редактор Groovy-обработчиков</h2>
         <div class="editor-toolbar">
             <select id="scriptsSelect"></select>
@@ -141,7 +153,7 @@
         <div class="editor-status mono" id="editorCursorInfo">Ln 1, Col 1</div>
     </section>
 
-    <section class="panel">
+    <section class="panel tab-panel" data-tab-panel="templates">
         <h2 data-i18n="templates">Integration templates (.its)</h2>
         <h3 data-i18n="templatePreview">1) Предпросмотр импорта</h3>
         <div class="actions-row">
@@ -178,7 +190,7 @@
         </div>
     </section>
 
-    <section class="panel">
+    <section class="panel tab-panel" data-tab-panel="templates">
         <h2 data-i18n="snapshotSection">Eventing snapshot import/export</h2>
         <div class="actions-row">
             <button id="snapshotExportBtn" data-i18n="snapshotExport">Export snapshot в JSON</button>
@@ -195,7 +207,7 @@
         <pre id="snapshotResultView" class="mono"></pre>
     </section>
 
-    <section class="panel">
+    <section class="panel tab-panel" data-tab-panel="connectors">
         <h2 data-i18n="connectorsSection">Коннекторы внешних систем</h2>
         <div class="actions-row">
             <button id="loadConnectorsBtn" data-i18n="connectorsLoad">Загрузить каталог коннекторов</button>
@@ -246,6 +258,30 @@
         <textarea id="inboundPayloadInput" class="payload-editor" spellcheck="false">{}</textarea>
         <button id="runInboundReactionBtn" data-i18n="runInboundReaction">Запустить inbound reaction</button>
         <pre id="connectorsResultView" class="mono"></pre>
+    </section>
+
+    <section class="panel tab-panel" data-tab-panel="ux">
+        <h2 data-i18n="uxReviewTitle">UX-разбор и рекомендации DataBus GUI</h2>
+        <div class="split">
+            <div>
+                <h3 data-i18n="uxReviewChecklist">Чеклист удобства</h3>
+                <ul class="ux-list">
+                    <li data-i18n="uxReviewPoint1">Сценарии разделены по вкладкам: eventing, скрипты, шаблоны, коннекторы.</li>
+                    <li data-i18n="uxReviewPoint2">Ключевые операции inbox/outbox доступны без прокрутки через вкладку Eventing.</li>
+                    <li data-i18n="uxReviewPoint3">Для входящих сообщений есть единый блок: publish + inbound reaction + брокерные шаблоны.</li>
+                    <li data-i18n="uxReviewPoint4">Панель статуса внизу фиксирует результат последнего действия.</li>
+                </ul>
+            </div>
+            <div>
+                <h3 data-i18n="uxReviewDatabus">DataBus стилистика</h3>
+                <ul class="ux-list">
+                    <li data-i18n="uxReviewPoint5">Градиентная шапка и карточки метрик отражают «операционный» стиль DataBus.</li>
+                    <li data-i18n="uxReviewPoint6">Тёмные mono-блоки для JSON и событий сокращают визуальный шум.</li>
+                    <li data-i18n="uxReviewPoint7">Для outbox/inbox добавлен быстрый текстовый фильтр по eventId/branchId.</li>
+                    <li data-i18n="uxReviewPoint8">Последняя вкладка сохраняется локально, чтобы ускорить повторные сессии.</li>
+                </ul>
+            </div>
+        </div>
     </section>
 
     <section class="panel status-panel">

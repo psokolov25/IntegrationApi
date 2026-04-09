@@ -30,6 +30,7 @@ public class IntegrationGatewayConfiguration {
     private List<InternalClient> internalClients = new ArrayList<>();
 
     private KeycloakSettings keycloak = new KeycloakSettings();
+    private AnonymousAccessSettings anonymousAccess = new AnonymousAccessSettings();
 
     /**
      * Локальное дообогащение прав (для HYBRID режима): subjectId -> permissions.
@@ -99,6 +100,14 @@ public class IntegrationGatewayConfiguration {
 
     public void setKeycloak(KeycloakSettings keycloak) {
         this.keycloak = keycloak;
+    }
+
+    public AnonymousAccessSettings getAnonymousAccess() {
+        return anonymousAccess;
+    }
+
+    public void setAnonymousAccess(AnonymousAccessSettings anonymousAccess) {
+        this.anonymousAccess = anonymousAccess;
     }
 
     public Map<String, Set<String>> getLocalSubjectPermissions() {
@@ -361,6 +370,41 @@ public class IntegrationGatewayConfiguration {
 
         public void setEntityChangedBranchMapping(EntityChangedBranchMappingSettings entityChangedBranchMapping) {
             this.entityChangedBranchMapping = entityChangedBranchMapping;
+        }
+    }
+
+    @Introspected
+    public static class AnonymousAccessSettings {
+        private boolean enabled = false;
+        private String subjectId = "anonymous-debug";
+        private Set<String> permissions = Set.of(
+                "queue-view", "queue-call", "queue-aggregate", "metrics-view",
+                "event-process", "branch-state-view", "branch-state-manage",
+                "programmable-script-manage", "programmable-script-execute"
+        );
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getSubjectId() {
+            return subjectId;
+        }
+
+        public void setSubjectId(String subjectId) {
+            this.subjectId = subjectId;
+        }
+
+        public Set<String> getPermissions() {
+            return permissions;
+        }
+
+        public void setPermissions(Set<String> permissions) {
+            this.permissions = permissions;
         }
     }
 

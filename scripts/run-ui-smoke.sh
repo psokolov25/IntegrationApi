@@ -6,6 +6,7 @@ cd "$ROOT_DIR"
 
 APP_LOG="target/ui-smoke-app.log"
 BASE_URL="${UI_BASE_URL:-http://127.0.0.1:8080}"
+SMOKE_API_KEY="${UI_SMOKE_API_KEY:-dev-api-key}"
 mkdir -p target
 mkdir -p cache/ui-tools/npm cache/ui-tools/playwright cache/ui-tools/playwright-artifacts cache/ui-tools/playwright-report cache/m2
 
@@ -28,7 +29,7 @@ for _ in {1..60}; do
   sleep 1
 done
 curl -sf "${BASE_URL}/health/readiness" >/dev/null
-curl -sf "${BASE_URL}/health" >/dev/null
+curl -sf "${BASE_URL}/health/liveness" >/dev/null
 curl -sf "${BASE_URL}/ui/" >/dev/null
 
 echo "[3/6] Установка зависимостей UI-тестов..."
@@ -100,8 +101,11 @@ if ! run_project "$SELECTED_PROJECT"; then
   fi
 fi
 
-echo "[6/6] API smoke после GUI-прогона..."
-curl -sf "${BASE_URL}/api/v1/events/stats/health" >/dev/null
-curl -sf "${BASE_URL}/api/v1/events/version" >/dev/null
+echo "[6/7] Снятие скриншота UI..."
+PLAYWRIGHT_BROWSERS_PATH="$ROOT_DIR/cache/ui-tools/playwright" UI_BASE_URL="$BASE_URL" npx playwright test screenshot.spec.mjs --project "$SELECTED_PROJECT"
+
+echo "[7/7] API smoke после GUI-прогона..."
+curl -sf -H "X-API-KEY: ${SMOKE_API_KEY}" "${BASE_URL}/api/v1/events/stats/health" >/dev/null
+curl -sf -H "X-API-KEY: ${SMOKE_API_KEY}" "${BASE_URL}/api/v1/events/version" >/dev/null
 
 echo "UI smoke-тесты успешно завершены."
