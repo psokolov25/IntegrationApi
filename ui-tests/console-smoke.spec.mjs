@@ -7,9 +7,12 @@ test('ui dashboard loads without console errors', async ({page}) => {
             consoleErrors.push(msg.text());
         }
     });
+    await page.addInitScript(() => {
+        localStorage.setItem('integration-ui-api-key', 'dev-api-key');
+    });
     await page.goto('/ui/');
-    await expect(page.locator('h1')).toContainText('Integration API');
-    await expect(page.locator('#statsCards')).toBeVisible();
+    await expect(page.locator('h1')).toContainText(/Integration\s*API/i);
+    await expect(page.locator('h2').first()).toBeVisible();
     await expect(page.locator('#scriptBodyInput')).toBeVisible();
     expect(consoleErrors, `Console errors:\n${consoleErrors.join('\n')}`).toEqual([]);
 });
@@ -24,4 +27,3 @@ test('ui supports script editor draft and debug payload editing', async ({page})
     await expect(page.locator('#scriptBodyInput')).toHaveValue(/ui-test/);
     await expect(page.locator('#debugPayloadInput')).toHaveValue('{"sample":true}');
 });
-

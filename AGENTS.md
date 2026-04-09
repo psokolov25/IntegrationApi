@@ -41,3 +41,58 @@
 - `curl` для readiness/API smoke.
 - `mvn test` для unit/integration слоя backend.
 - При доступности browser-инструмента окружения: скриншоты UI для визуальной валидации.
+
+
+## Best practices для Web GUI в Codex (web-версия)
+
+1. В Codex web сначала выполнять **быстрый smoke** (health + загрузка `/ui/`), затем переходить к более глубоким сценариям.
+2. При наличии browser-инструмента в среде обязательно фиксировать:
+   - console errors (`page.on("console")`),
+   - page errors (`pageerror`),
+   - network failures (4xx/5xx, aborted requests),
+   - trace/screenshots/video на падениях.
+3. Для воспроизводимости запускать Playwright из `scripts/run-ui-smoke.sh` и сохранять артефакты в `./cache/ui-tools/*`.
+4. Если Chromium недоступен в окружении, использовать fallback на Firefox/WebKit, не останавливая цикл smoke/regression.
+5. Для диагностики API/GUI расхождений параллельно выполнять `curl` smoke на backend endpoints.
+
+## Политика кэширования инструментов и зависимостей
+
+- Любые сборочные и тестовые кэши должны храниться в `./cache` (не коммитится в git).
+- Maven-репозиторий: `./cache/m2` (через `.mvn/maven.config`).
+- npm cache для ui-tests: `./cache/ui-tools/npm`.
+- Playwright browsers/artifacts/reports: `./cache/ui-tools/playwright*`.
+- Запрещено складывать бинарные зависимости во внепроектные persistent-кэши при CI/локальном воспроизведении сценариев этого репозитория.
+
+
+### Что делать при ошибках Playwright вида `libatk-1.0.so.0`/`missing dependencies`
+
+1. Сначала запустить `scripts/run-ui-smoke.sh` — скрипт сам попытается выполнить `playwright install-deps` и `apt-get install` нужных библиотек.
+2. Если автопочинка не сработала, вручную выполнить:
+   - `cd ui-tests && PLAYWRIGHT_BROWSERS_PATH=../cache/ui-tools/playwright npx playwright install-deps`;
+   - для Debian/Ubuntu: `apt-get install` пакеты GTK/ATK/GStreamer из playbook (ниже).
+3. После установки зависимостей повторить `scripts/run-ui-smoke.sh`.
+4. Если Chromium все еще недоступен — использовать fallback-проект `UI_SMOKE_PROJECT=firefox-desktop` или `webkit-desktop`.
+
+
+## Алгоритм восстановления GUI-инструментария (если всё отсутствует)
+
+1. **Проверить базовые зависимости окружения**:
+   - `java -version` (JDK 17+), `mvn -v`, `node -v`, `npm -v`, `curl --version`.
+2. **Подготовить кэш-директории** (только внутри проекта):
+   - `mkdir -p cache/m2 cache/ui-tools/npm cache/ui-tools/playwright cache/ui-tools/playwright-artifacts cache/ui-tools/playwright-report`.
+3. **Восстановить backend build toolchain**:
+   - использовать `.mvn/maven.config` (`-Dmaven.repo.local=./cache/m2`),
+   - выполнить `mvn test` (подтягивает Maven-артефакты в `./cache/m2`).
+4. **Восстановить Node/Playwright зависимости**:
+   - `cd ui-tests && NPM_CONFIG_CACHE=../cache/ui-tools/npm npm install`;
+   - `PLAYWRIGHT_BROWSERS_PATH=../cache/ui-tools/playwright npx playwright install chromium`.
+5. **Восстановить системные библиотеки браузеров Linux**:
+   - сначала `PLAYWRIGHT_BROWSERS_PATH=../cache/ui-tools/playwright npx playwright install-deps`;
+   - при неуспехе — `apt-get install` пакетный набор из `PLAYBOOKS.md`.
+6. **Проверить smoke end-to-end**:
+   - запуск `./scripts/run-ui-smoke.sh`;
+   - при недоступности Chromium использовать `UI_SMOKE_PROJECT=firefox-desktop` или `webkit-desktop`.
+7. **Проверить артефакты и отчёты**:
+   - `cache/ui-tools/playwright-artifacts` (trace/video/screenshots),
+   - `cache/ui-tools/playwright-report` (HTML report),
+   - `target/ui-smoke-app.log` (backend лог).
