@@ -1,0 +1,872 @@
+{
+  "oldValue": {
+    "id": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+    "name": "Банк \"Дубна\"",
+    "address": "РФ;Дубна;Боголюбова 30",
+    "description": "главное отделение банка \"Дубна\" в г. Дубна",
+    "prefix": "DUB",
+    "timeZoneOffset": "+03:00",
+    "resetTime": "11:24:00",
+    "path": "",
+    "entryPoints": {
+      "f7ff91a7-a2a7-4b90-adaf-b2d38a24e0f2": {
+        "id": "f7ff91a7-a2a7-4b90-adaf-b2d38a24e0f2",
+        "name": "entry_point 1",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "printer": {
+          "id": "f7ff91a7-a2a7-4b90-adaf-b2d38a24e0f2",
+          "name": "entry_point 1"
+        }
+      }
+    },
+    "reception": {
+      "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+      "printers": [
+        {
+          "id": "f7ff91a7-a2a7-4b90-adaf-b2d38a24e0f2",
+          "name": "entry_point 1"
+        }
+      ],
+      "users": {
+        "superadmin": {
+          "id": "0e792721-0483-46d7-a916-18e065640ae2",
+          "visits": [],
+          "onBreak": false,
+          "lastBreakDuration": 0,
+          "firstName": "Суперадмин",
+          "lastName": "Суперадмин",
+          "email": "superadmin@aritmos.ru"
+        }
+      }
+    },
+    "queues": {
+      "b5b680f5-6dee-4a54-9abd-5e5eca64a192": {
+        "id": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+        "name": "Кредитные карты",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "minTicketNumber": 1,
+        "maxTicketNumber": 999,
+        "ticketCounter": 3,
+        "ticketNumberWidth": 3,
+        "waitingSL": 660,
+        "ticketPrefix": "C"
+      },
+      "885a66ed-f50e-4634-b565-27b8b9868b4d": {
+        "id": "885a66ed-f50e-4634-b565-27b8b9868b4d",
+        "name": "Дебетовые карты",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "minTicketNumber": 1,
+        "maxTicketNumber": 999,
+        "ticketCounter": 2,
+        "ticketNumberWidth": 3,
+        "waitingSL": 600,
+        "ticketPrefix": "D"
+      }
+    },
+    "services": {
+      "0d059ee4-6825-4cad-bdbc-8845a1cc9f40": {
+        "id": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+        "name": "Выпуск кредитной карты",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "possibleOutcomes": {
+          "75c9cd39-5f8a-4431-80a0-e48644cb1e97": {
+            "id": "75c9cd39-5f8a-4431-80a0-e48644cb1e97",
+            "name": "Выдача"
+          },
+          "20f760bc-9680-4d73-a6aa-d3bc5b654778": {
+            "id": "20f760bc-9680-4d73-a6aa-d3bc5b654778",
+            "name": "Консультация"
+          }
+        },
+        "servingSL": 1200,
+        "linkedQueueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+        "isAvailable": false,
+        "serviceGroupId": "a5ac3866-f7f7-427f-81d4-6ce7106222bb"
+      },
+      "0337008b-2130-464f-9a63-f1b6d3067383": {
+        "id": "0337008b-2130-464f-9a63-f1b6d3067383",
+        "name": "Выпуск дебетовой карты",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "possibleOutcomes": {
+          "75c9cd39-5f8a-4431-80a0-e48644cb1e97": {
+            "id": "75c9cd39-5f8a-4431-80a0-e48644cb1e97",
+            "name": "Выдача"
+          },
+          "20f760bc-9680-4d73-a6aa-d3bc5b654778": {
+            "id": "20f760bc-9680-4d73-a6aa-d3bc5b654778",
+            "name": "Консультация"
+          },
+          "4911e18a-3f81-44bb-ad64-b382454cf5ac": {
+            "id": "4911e18a-3f81-44bb-ad64-b382454cf5ac",
+            "name": "Оформление"
+          }
+        },
+        "servingSL": 900,
+        "linkedQueueId": "885a66ed-f50e-4634-b565-27b8b9868b4d",
+        "isAvailable": true,
+        "serviceGroupId": "1e5a5509-0ce8-4320-9825-d90af09ff60b"
+      }
+    },
+    "workProfiles": {
+      "30ef3785-9ab5-4fc8-acc3-d069f444f528": {
+        "id": "30ef3785-9ab5-4fc8-acc3-d069f444f528",
+        "name": "Специалист по дебетовым картам",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "queueIds": [
+          "885a66ed-f50e-4634-b565-27b8b9868b4d"
+        ],
+        "callRule": "maxWaitingTime"
+      },
+      "2431ed50-9adf-43a7-9e25-d9a2f2004c1e": {
+        "id": "2431ed50-9adf-43a7-9e25-d9a2f2004c1e",
+        "name": "Специалист по кредитным картам",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "queueIds": [
+          "b5b680f5-6dee-4a54-9abd-5e5eca64a192"
+        ],
+        "callRule": "maxWaitingTime"
+      },
+      "607739f3-0547-4100-bb9b-3c74fbce1877": {
+        "id": "607739f3-0547-4100-bb9b-3c74fbce1877",
+        "name": "Специалист по картам",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "queueIds": [
+          "885a66ed-f50e-4634-b565-27b8b9868b4d",
+          "b5b680f5-6dee-4a54-9abd-5e5eca64a192"
+        ],
+        "callRule": "maxWaitingTime"
+      }
+    },
+    "servicePoints": {
+      "808f2ea6-c5f7-4594-a4f9-52d18a823833": {
+        "id": "808f2ea6-c5f7-4594-a4f9-52d18a823833",
+        "name": "Окно 2",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false,
+        "lastOpenDateTime": "2026-04-08T13:29:48Z[GMT]"
+      },
+      "8681bfe5-9c51-4560-8acb-bc0c0b89fe8e": {
+        "id": "8681bfe5-9c51-4560-8acb-bc0c0b89fe8e",
+        "name": "Касса",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [
+          {
+            "waitingTime": 13570,
+            "totalWaitingTime": 13577,
+            "returningTime": 0,
+            "transferingTime": 13570,
+            "visitLifeTime": 13577,
+            "servingTime": 0,
+            "isCallable": true,
+            "id": "2a9d4a91-1523-4fba-a7a2-f10b3952b3b9",
+            "status": "WAITING_IN_SERVICE_POOL",
+            "ticket": "C002",
+            "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+            "branchName": "Банк \"Дубна\"",
+            "branchPrefix": "DUB",
+            "branchPath": "",
+            "createDateTime": "2026-04-08T10:14:17Z[GMT]",
+            "transferDateTime": "2026-04-08T10:14:24Z[GMT]",
+            "poolServicePointId": "8681bfe5-9c51-4560-8acb-bc0c0b89fe8e",
+            "servedServices": [],
+            "visitMarks": [],
+            "visitNotes": [],
+            "currentService": {
+              "id": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+              "name": "Выпуск кредитной карты",
+              "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+              "possibleOutcomes": {
+                "75c9cd39-5f8a-4431-80a0-e48644cb1e97": {
+                  "id": "75c9cd39-5f8a-4431-80a0-e48644cb1e97",
+                  "name": "Выдача"
+                },
+                "20f760bc-9680-4d73-a6aa-d3bc5b654778": {
+                  "id": "20f760bc-9680-4d73-a6aa-d3bc5b654778",
+                  "name": "Консультация"
+                }
+              },
+              "servingSL": 1200,
+              "linkedQueueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+              "isAvailable": false,
+              "serviceGroupId": "a5ac3866-f7f7-427f-81d4-6ce7106222bb"
+            },
+            "parameterMap": {
+              "note": "",
+              "LastQueueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192"
+            },
+            "printTicket": false,
+            "visitEvents": [
+              "CREATED",
+              "PLACED_IN_QUEUE",
+              "TRANSFER_TO_SERVICE_POINT_POOL"
+            ],
+            "events": [
+              {
+                "visitEvent": "CREATED",
+                "eventDateTime": "2026-04-08T10:14:17Z[GMT]",
+                "parameters": {
+                  "waitingDelaySeconds": "0",
+                  "waitingDelayType": "none",
+                  "staffLastName": "",
+                  "waitingTime": "0",
+                  "serviceName": "Выпуск кредитной карты",
+                  "visitCreator": "reception",
+                  "staffFirstName": "",
+                  "staffName": "superadmin",
+                  "visitLifeTime": "0",
+                  "printerId": "0",
+                  "totalWaitingTime": "0",
+                  "isVirtual": "true",
+                  "serviceId": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+                  "staffId": "0e792721-0483-46d7-a916-18e065640ae2"
+                }
+              },
+              {
+                "visitEvent": "PLACED_IN_QUEUE",
+                "eventDateTime": "2026-04-08T10:14:17Z[GMT]",
+                "parameters": {
+                  "waitingDelaySeconds": "0",
+                  "queueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+                  "waitingDelayType": "none",
+                  "visitLifeTime": "0",
+                  "waitingTime": "0",
+                  "totalWaitingTime": "0",
+                  "serviceId": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+                  "serviceName": "Выпуск кредитной карты"
+                }
+              },
+              {
+                "visitEvent": "TRANSFER_TO_SERVICE_POINT_POOL",
+                "eventDateTime": "2026-04-08T10:14:24Z[GMT]",
+                "parameters": {
+                  "waitingDelaySeconds": "0",
+                  "queueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+                  "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+                  "waitingDelayType": "transfer",
+                  "staffLastName": "",
+                  "serviceInfo": "receptionservice_transfer_servicepointpool_visitId: 8681bfe5-9c51-4560-8acb-bc0c0b89fe8e",
+                  "waitingTime": "7",
+                  "serviceName": "Выпуск кредитной карты",
+                  "staffFirstName": "",
+                  "staffName": "superadmin",
+                  "visitLifeTime": "7",
+                  "totalWaitingTime": "7",
+                  "serviceId": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+                  "poolServicePointId": "8681bfe5-9c51-4560-8acb-bc0c0b89fe8e",
+                  "staffId": "0e792721-0483-46d7-a916-18e065640ae2"
+                }
+              }
+            ],
+            "returnTimeDelay": 0,
+            "transferTimeDelay": 0
+          }
+        ],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false
+      },
+      "fb8b271f-90b3-4a64-91d9-c2b6287498bc": {
+        "id": "fb8b271f-90b3-4a64-91d9-c2b6287498bc",
+        "name": "Окно 1",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false
+      },
+      "6070b5ce-b9ed-40c9-9fef-5138e28d9709": {
+        "id": "6070b5ce-b9ed-40c9-9fef-5138e28d9709",
+        "name": "Окно 3",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false
+      },
+      "7c2aa340-d05f-4e87-a1b8-f99277887712": {
+        "id": "7c2aa340-d05f-4e87-a1b8-f99277887712",
+        "name": "test_sp",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false
+      }
+    },
+    "possibleDeliveredServices": {
+      "f434e42c-5c8c-4565-9190-f718f790aee2": {
+        "id": "f434e42c-5c8c-4565-9190-f718f790aee2",
+        "name": "Сбор документов",
+        "possibleOutcomes": {
+          "4911e18a-3f81-44bb-ad64-b382454cf5ac": {
+            "id": "4911e18a-3f81-44bb-ad64-b382454cf5ac",
+            "name": "Оформление"
+          }
+        },
+        "serviceIds": [
+          "0d059ee4-6825-4cad-bdbc-8845a1cc9f40"
+        ]
+      },
+      "58e52abc-b5e9-4ec0-9d9e-07796634dee7": {
+        "id": "58e52abc-b5e9-4ec0-9d9e-07796634dee7",
+        "name": "Запрос на проверку кредитной истории",
+        "possibleOutcomes": {
+          "20f760bc-9680-4d73-a6aa-d3bc5b654778": {
+            "id": "20f760bc-9680-4d73-a6aa-d3bc5b654778",
+            "name": "Консультация"
+          }
+        },
+        "serviceIds": [
+          "0d059ee4-6825-4cad-bdbc-8845a1cc9f40"
+        ]
+      }
+    },
+    "marks": {},
+    "users": {
+      "superadmin": {
+        "id": "0e792721-0483-46d7-a916-18e065640ae2",
+        "name": "superadmin",
+        "visits": [],
+        "onBreak": false,
+        "lastBreakDuration": 0,
+        "isAdmin": true,
+        "firstName": "Суперадмин",
+        "lastName": "Суперадмин",
+        "email": "superadmin@aritmos.ru",
+        "allBranches": [
+          {
+            "id": "052cfcde-1ea5-4d8e-9bd4-d03fb404f344",
+            "name": "Отделение на Тверской",
+            "path": "/REGION/Россия/Московская область/Дубна/Отделение на Тверской",
+            "parentId": "9d6f51fa-728c-4dd7-80d2-47c1b4be7f10",
+            "subGroupCount": 0,
+            "attributes": {
+              "type": [
+                "branch"
+              ],
+              "branchPrefix": [
+                "TVR"
+              ]
+            },
+            "access": {
+              "view": true,
+              "viewMembers": true,
+              "manageMembers": true,
+              "manage": true,
+              "manageMembership": true
+            }
+          }
+        ]
+      },
+      "admin": {
+        "id": "f1b1c069-c889-4ea0-a8e9-b9d9b3b15748",
+        "name": "admin",
+        "visits": [],
+        "onBreak": false,
+        "lastBreakDuration": 0,
+        "isAdmin": true,
+        "firstName": "Технический",
+        "lastName": "аккаунт",
+        "email": "pavel.sokolov@q-systems.ru"
+      },
+      "ivan": {
+        "id": "e9fcd251-acec-413f-b02c-e6d5f364cd28",
+        "name": "ivan",
+        "visits": [],
+        "onBreak": false,
+        "lastBreakDuration": 0,
+        "isAdmin": true,
+        "firstName": "Иван",
+        "lastName": "Иванов",
+        "email": "ivan@mail.ru",
+        "currentWorkProfileId": "30ef3785-9ab5-4fc8-acc3-d069f444f528",
+        "servicePointId": "808f2ea6-c5f7-4594-a4f9-52d18a823833",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "allBranches": [
+          {
+            "id": "052cfcde-1ea5-4d8e-9bd4-d03fb404f344",
+            "name": "Отделение на Тверской",
+            "path": "/REGION/Россия/Московская область/Дубна/Отделение на Тверской",
+            "parentId": "9d6f51fa-728c-4dd7-80d2-47c1b4be7f10",
+            "subGroupCount": 0,
+            "attributes": {
+              "type": [
+                "branch"
+              ],
+              "branchPrefix": [
+                "TVR"
+              ]
+            },
+            "access": {
+              "view": true,
+              "viewMembers": true,
+              "manageMembers": true,
+              "manage": true,
+              "manageMembership": true
+            }
+          }
+        ]
+      }
+    },
+    "segmentationRules": {},
+    "customSegmentationRules": {},
+    "customCallRules": {},
+    "serviceGroups": {
+      "a5ac3866-f7f7-427f-81d4-6ce7106222bb": {
+        "id": "a5ac3866-f7f7-427f-81d4-6ce7106222bb",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "serviceIds": [
+          "0d059ee4-6825-4cad-bdbc-8845a1cc9f40"
+        ]
+      },
+      "1e5a5509-0ce8-4320-9825-d90af09ff60b": {
+        "id": "1e5a5509-0ce8-4320-9825-d90af09ff60b",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "serviceIds": [
+          "0337008b-2130-464f-9a63-f1b6d3067383"
+        ]
+      }
+    }
+  },
+  "newValue": {
+    "id": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+    "name": "Банк \"Дубна\"",
+    "address": "РФ;Дубна;Боголюбова 30",
+    "description": "главное отделение банка \"Дубна\" в г. Дубна",
+    "prefix": "DUB",
+    "timeZoneOffset": "+03:00",
+    "resetTime": "11:24:00",
+    "path": "",
+    "entryPoints": {
+      "f7ff91a7-a2a7-4b90-adaf-b2d38a24e0f2": {
+        "id": "f7ff91a7-a2a7-4b90-adaf-b2d38a24e0f2",
+        "name": "entry_point 1",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "printer": {
+          "id": "f7ff91a7-a2a7-4b90-adaf-b2d38a24e0f2",
+          "name": "entry_point 1"
+        }
+      }
+    },
+    "reception": {
+      "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+      "printers": [
+        {
+          "id": "f7ff91a7-a2a7-4b90-adaf-b2d38a24e0f2",
+          "name": "entry_point 1"
+        }
+      ],
+      "users": {
+        "superadmin": {
+          "id": "0e792721-0483-46d7-a916-18e065640ae2",
+          "visits": [],
+          "onBreak": false,
+          "lastBreakDuration": 0,
+          "firstName": "Суперадмин",
+          "lastName": "Суперадмин",
+          "email": "superadmin@aritmos.ru"
+        }
+      }
+    },
+    "queues": {
+      "b5b680f5-6dee-4a54-9abd-5e5eca64a192": {
+        "id": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+        "name": "Кредитные карты",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "minTicketNumber": 1,
+        "maxTicketNumber": 999,
+        "ticketCounter": 3,
+        "ticketNumberWidth": 3,
+        "waitingSL": 660,
+        "ticketPrefix": "C"
+      },
+      "885a66ed-f50e-4634-b565-27b8b9868b4d": {
+        "id": "885a66ed-f50e-4634-b565-27b8b9868b4d",
+        "name": "Дебетовые карты",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "minTicketNumber": 1,
+        "maxTicketNumber": 999,
+        "ticketCounter": 2,
+        "ticketNumberWidth": 3,
+        "waitingSL": 600,
+        "ticketPrefix": "D"
+      }
+    },
+    "services": {
+      "0d059ee4-6825-4cad-bdbc-8845a1cc9f40": {
+        "id": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+        "name": "Выпуск кредитной карты",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "possibleOutcomes": {
+          "75c9cd39-5f8a-4431-80a0-e48644cb1e97": {
+            "id": "75c9cd39-5f8a-4431-80a0-e48644cb1e97",
+            "name": "Выдача"
+          },
+          "20f760bc-9680-4d73-a6aa-d3bc5b654778": {
+            "id": "20f760bc-9680-4d73-a6aa-d3bc5b654778",
+            "name": "Консультация"
+          }
+        },
+        "servingSL": 1200,
+        "linkedQueueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+        "isAvailable": false,
+        "serviceGroupId": "a5ac3866-f7f7-427f-81d4-6ce7106222bb"
+      },
+      "0337008b-2130-464f-9a63-f1b6d3067383": {
+        "id": "0337008b-2130-464f-9a63-f1b6d3067383",
+        "name": "Выпуск дебетовой карты",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "possibleOutcomes": {
+          "75c9cd39-5f8a-4431-80a0-e48644cb1e97": {
+            "id": "75c9cd39-5f8a-4431-80a0-e48644cb1e97",
+            "name": "Выдача"
+          },
+          "20f760bc-9680-4d73-a6aa-d3bc5b654778": {
+            "id": "20f760bc-9680-4d73-a6aa-d3bc5b654778",
+            "name": "Консультация"
+          },
+          "4911e18a-3f81-44bb-ad64-b382454cf5ac": {
+            "id": "4911e18a-3f81-44bb-ad64-b382454cf5ac",
+            "name": "Оформление"
+          }
+        },
+        "servingSL": 900,
+        "linkedQueueId": "885a66ed-f50e-4634-b565-27b8b9868b4d",
+        "isAvailable": true,
+        "serviceGroupId": "1e5a5509-0ce8-4320-9825-d90af09ff60b"
+      }
+    },
+    "workProfiles": {
+      "30ef3785-9ab5-4fc8-acc3-d069f444f528": {
+        "id": "30ef3785-9ab5-4fc8-acc3-d069f444f528",
+        "name": "Специалист по дебетовым картам",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "queueIds": [
+          "885a66ed-f50e-4634-b565-27b8b9868b4d"
+        ],
+        "callRule": "maxWaitingTime"
+      },
+      "2431ed50-9adf-43a7-9e25-d9a2f2004c1e": {
+        "id": "2431ed50-9adf-43a7-9e25-d9a2f2004c1e",
+        "name": "Специалист по кредитным картам",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "queueIds": [
+          "b5b680f5-6dee-4a54-9abd-5e5eca64a192"
+        ],
+        "callRule": "maxWaitingTime"
+      },
+      "607739f3-0547-4100-bb9b-3c74fbce1877": {
+        "id": "607739f3-0547-4100-bb9b-3c74fbce1877",
+        "name": "Специалист по картам",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "queueIds": [
+          "885a66ed-f50e-4634-b565-27b8b9868b4d",
+          "b5b680f5-6dee-4a54-9abd-5e5eca64a192"
+        ],
+        "callRule": "maxWaitingTime"
+      }
+    },
+    "servicePoints": {
+      "808f2ea6-c5f7-4594-a4f9-52d18a823833": {
+        "id": "808f2ea6-c5f7-4594-a4f9-52d18a823833",
+        "name": "Окно 2",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false,
+        "lastOpenDateTime": "2026-04-08T13:29:48Z[GMT]"
+      },
+      "8681bfe5-9c51-4560-8acb-bc0c0b89fe8e": {
+        "id": "8681bfe5-9c51-4560-8acb-bc0c0b89fe8e",
+        "name": "Касса",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [
+          {
+            "waitingTime": 13570,
+            "totalWaitingTime": 13577,
+            "returningTime": 0,
+            "transferingTime": 13570,
+            "visitLifeTime": 13577,
+            "servingTime": 0,
+            "isCallable": true,
+            "id": "2a9d4a91-1523-4fba-a7a2-f10b3952b3b9",
+            "status": "WAITING_IN_SERVICE_POOL",
+            "ticket": "C002",
+            "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+            "branchName": "Банк \"Дубна\"",
+            "branchPrefix": "DUB",
+            "branchPath": "",
+            "createDateTime": "2026-04-08T10:14:17Z[GMT]",
+            "transferDateTime": "2026-04-08T10:14:24Z[GMT]",
+            "poolServicePointId": "8681bfe5-9c51-4560-8acb-bc0c0b89fe8e",
+            "servedServices": [],
+            "visitMarks": [],
+            "visitNotes": [],
+            "currentService": {
+              "id": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+              "name": "Выпуск кредитной карты",
+              "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+              "possibleOutcomes": {
+                "75c9cd39-5f8a-4431-80a0-e48644cb1e97": {
+                  "id": "75c9cd39-5f8a-4431-80a0-e48644cb1e97",
+                  "name": "Выдача"
+                },
+                "20f760bc-9680-4d73-a6aa-d3bc5b654778": {
+                  "id": "20f760bc-9680-4d73-a6aa-d3bc5b654778",
+                  "name": "Консультация"
+                }
+              },
+              "servingSL": 1200,
+              "linkedQueueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+              "isAvailable": false,
+              "serviceGroupId": "a5ac3866-f7f7-427f-81d4-6ce7106222bb"
+            },
+            "parameterMap": {
+              "note": "",
+              "LastQueueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192"
+            },
+            "printTicket": false,
+            "visitEvents": [
+              "CREATED",
+              "PLACED_IN_QUEUE",
+              "TRANSFER_TO_SERVICE_POINT_POOL"
+            ],
+            "events": [
+              {
+                "visitEvent": "CREATED",
+                "eventDateTime": "2026-04-08T10:14:17Z[GMT]",
+                "parameters": {
+                  "waitingDelaySeconds": "0",
+                  "waitingDelayType": "none",
+                  "staffLastName": "",
+                  "waitingTime": "0",
+                  "serviceName": "Выпуск кредитной карты",
+                  "visitCreator": "reception",
+                  "staffFirstName": "",
+                  "staffName": "superadmin",
+                  "visitLifeTime": "0",
+                  "printerId": "0",
+                  "totalWaitingTime": "0",
+                  "isVirtual": "true",
+                  "serviceId": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+                  "staffId": "0e792721-0483-46d7-a916-18e065640ae2"
+                }
+              },
+              {
+                "visitEvent": "PLACED_IN_QUEUE",
+                "eventDateTime": "2026-04-08T10:14:17Z[GMT]",
+                "parameters": {
+                  "waitingDelaySeconds": "0",
+                  "queueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+                  "waitingDelayType": "none",
+                  "visitLifeTime": "0",
+                  "waitingTime": "0",
+                  "totalWaitingTime": "0",
+                  "serviceId": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+                  "serviceName": "Выпуск кредитной карты"
+                }
+              },
+              {
+                "visitEvent": "TRANSFER_TO_SERVICE_POINT_POOL",
+                "eventDateTime": "2026-04-08T10:14:24Z[GMT]",
+                "parameters": {
+                  "waitingDelaySeconds": "0",
+                  "queueId": "b5b680f5-6dee-4a54-9abd-5e5eca64a192",
+                  "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+                  "waitingDelayType": "transfer",
+                  "staffLastName": "",
+                  "serviceInfo": "receptionservice_transfer_servicepointpool_visitId: 8681bfe5-9c51-4560-8acb-bc0c0b89fe8e",
+                  "waitingTime": "7",
+                  "serviceName": "Выпуск кредитной карты",
+                  "staffFirstName": "",
+                  "staffName": "superadmin",
+                  "visitLifeTime": "7",
+                  "totalWaitingTime": "7",
+                  "serviceId": "0d059ee4-6825-4cad-bdbc-8845a1cc9f40",
+                  "poolServicePointId": "8681bfe5-9c51-4560-8acb-bc0c0b89fe8e",
+                  "staffId": "0e792721-0483-46d7-a916-18e065640ae2"
+                }
+              }
+            ],
+            "returnTimeDelay": 0,
+            "transferTimeDelay": 0
+          }
+        ],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false
+      },
+      "fb8b271f-90b3-4a64-91d9-c2b6287498bc": {
+        "id": "fb8b271f-90b3-4a64-91d9-c2b6287498bc",
+        "name": "Окно 1",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false
+      },
+      "6070b5ce-b9ed-40c9-9fef-5138e28d9709": {
+        "id": "6070b5ce-b9ed-40c9-9fef-5138e28d9709",
+        "name": "Окно 3",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false
+      },
+      "7c2aa340-d05f-4e87-a1b8-f99277887712": {
+        "id": "7c2aa340-d05f-4e87-a1b8-f99277887712",
+        "name": "test_sp",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "visits": [],
+        "user": null,
+        "autoCallMode": false,
+        "isConfirmRequired": false
+      }
+    },
+    "possibleDeliveredServices": {
+      "f434e42c-5c8c-4565-9190-f718f790aee2": {
+        "id": "f434e42c-5c8c-4565-9190-f718f790aee2",
+        "name": "Сбор документов",
+        "possibleOutcomes": {
+          "4911e18a-3f81-44bb-ad64-b382454cf5ac": {
+            "id": "4911e18a-3f81-44bb-ad64-b382454cf5ac",
+            "name": "Оформление"
+          }
+        },
+        "serviceIds": [
+          "0d059ee4-6825-4cad-bdbc-8845a1cc9f40"
+        ]
+      },
+      "58e52abc-b5e9-4ec0-9d9e-07796634dee7": {
+        "id": "58e52abc-b5e9-4ec0-9d9e-07796634dee7",
+        "name": "Запрос на проверку кредитной истории",
+        "possibleOutcomes": {
+          "20f760bc-9680-4d73-a6aa-d3bc5b654778": {
+            "id": "20f760bc-9680-4d73-a6aa-d3bc5b654778",
+            "name": "Консультация"
+          }
+        },
+        "serviceIds": [
+          "0d059ee4-6825-4cad-bdbc-8845a1cc9f40"
+        ]
+      }
+    },
+    "marks": {},
+    "users": {
+      "superadmin": {
+        "id": "0e792721-0483-46d7-a916-18e065640ae2",
+        "name": "superadmin",
+        "visits": [],
+        "onBreak": false,
+        "lastBreakDuration": 0,
+        "isAdmin": true,
+        "firstName": "Суперадмин",
+        "lastName": "Суперадмин",
+        "email": "superadmin@aritmos.ru",
+        "allBranches": [
+          {
+            "id": "052cfcde-1ea5-4d8e-9bd4-d03fb404f344",
+            "name": "Отделение на Тверской",
+            "path": "/REGION/Россия/Московская область/Дубна/Отделение на Тверской",
+            "parentId": "9d6f51fa-728c-4dd7-80d2-47c1b4be7f10",
+            "subGroupCount": 0,
+            "attributes": {
+              "type": [
+                "branch"
+              ],
+              "branchPrefix": [
+                "TVR"
+              ]
+            },
+            "access": {
+              "view": true,
+              "viewMembers": true,
+              "manageMembers": true,
+              "manage": true,
+              "manageMembership": true
+            }
+          }
+        ]
+      },
+      "admin": {
+        "id": "f1b1c069-c889-4ea0-a8e9-b9d9b3b15748",
+        "name": "admin",
+        "visits": [],
+        "onBreak": false,
+        "lastBreakDuration": 0,
+        "isAdmin": true,
+        "firstName": "Технический",
+        "lastName": "аккаунт",
+        "email": "pavel.sokolov@q-systems.ru"
+      },
+      "ivan": {
+        "id": "e9fcd251-acec-413f-b02c-e6d5f364cd28",
+        "name": "ivan",
+        "visits": [],
+        "onBreak": false,
+        "lastBreakDuration": 0,
+        "isAdmin": true,
+        "firstName": "Иван",
+        "lastName": "Иванов",
+        "email": "ivan@mail.ru",
+        "currentWorkProfileId": "30ef3785-9ab5-4fc8-acc3-d069f444f528",
+        "servicePointId": "808f2ea6-c5f7-4594-a4f9-52d18a823833",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "allBranches": [
+          {
+            "id": "052cfcde-1ea5-4d8e-9bd4-d03fb404f344",
+            "name": "Отделение на Тверской",
+            "path": "/REGION/Россия/Московская область/Дубна/Отделение на Тверской",
+            "parentId": "9d6f51fa-728c-4dd7-80d2-47c1b4be7f10",
+            "subGroupCount": 0,
+            "attributes": {
+              "type": [
+                "branch"
+              ],
+              "branchPrefix": [
+                "TVR"
+              ]
+            },
+            "access": {
+              "view": true,
+              "viewMembers": true,
+              "manageMembers": true,
+              "manage": true,
+              "manageMembership": true
+            }
+          }
+        ]
+      }
+    },
+    "segmentationRules": {},
+    "customSegmentationRules": {},
+    "customCallRules": {},
+    "serviceGroups": {
+      "a5ac3866-f7f7-427f-81d4-6ce7106222bb": {
+        "id": "a5ac3866-f7f7-427f-81d4-6ce7106222bb",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "serviceIds": [
+          "0d059ee4-6825-4cad-bdbc-8845a1cc9f40"
+        ]
+      },
+      "1e5a5509-0ce8-4320-9825-d90af09ff60b": {
+        "id": "1e5a5509-0ce8-4320-9825-d90af09ff60b",
+        "branchId": "cd842979-3dc1-4505-a1ae-9a92f0622da2",
+        "serviceIds": [
+          "0337008b-2130-464f-9a63-f1b6d3067383"
+        ]
+      }
+    }
+  },
+  "className": "ru.aritmos.model.Branch",
+  "action": "BRANCH_CHANGED"
+}
