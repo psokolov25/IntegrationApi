@@ -192,6 +192,11 @@ public class IntegrationGatewayConfiguration {
     @Introspected
     public static class EventingSettings {
         private boolean enabled = false;
+        private boolean statePersistenceEnabled = true;
+        private String statePersistencePath = "cache/eventing-state/snapshot.json";
+        private int outboxBackoffSeconds = 5;
+        private int outboxMaxAttempts = 20;
+        private int inboxProcessingTimeoutSeconds = 120;
         private int maxRetries = 2;
         private int maxPayloadFields = 100;
         private long maxFutureSkewSeconds = 300;
@@ -212,6 +217,46 @@ public class IntegrationGatewayConfiguration {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+
+        public boolean isStatePersistenceEnabled() {
+            return statePersistenceEnabled;
+        }
+
+        public void setStatePersistenceEnabled(boolean statePersistenceEnabled) {
+            this.statePersistenceEnabled = statePersistenceEnabled;
+        }
+
+        public String getStatePersistencePath() {
+            return statePersistencePath;
+        }
+
+        public void setStatePersistencePath(String statePersistencePath) {
+            this.statePersistencePath = statePersistencePath;
+        }
+
+        public int getOutboxBackoffSeconds() {
+            return outboxBackoffSeconds;
+        }
+
+        public void setOutboxBackoffSeconds(int outboxBackoffSeconds) {
+            this.outboxBackoffSeconds = outboxBackoffSeconds;
+        }
+
+        public int getOutboxMaxAttempts() {
+            return outboxMaxAttempts;
+        }
+
+        public void setOutboxMaxAttempts(int outboxMaxAttempts) {
+            this.outboxMaxAttempts = outboxMaxAttempts;
+        }
+
+        public int getInboxProcessingTimeoutSeconds() {
+            return inboxProcessingTimeoutSeconds;
+        }
+
+        public void setInboxProcessingTimeoutSeconds(int inboxProcessingTimeoutSeconds) {
+            this.inboxProcessingTimeoutSeconds = inboxProcessingTimeoutSeconds;
         }
 
         public KafkaSettings getKafka() {
@@ -324,6 +369,7 @@ public class IntegrationGatewayConfiguration {
         private boolean enabled = true;
         private String eventType = "ENTITY_CHANGED";
         private List<String> classNamePaths = List.of(
+                "className",
                 "class",
                 "entityClass",
                 "data.class",
@@ -334,6 +380,8 @@ public class IntegrationGatewayConfiguration {
         );
         private List<String> acceptedClassNames = List.of("Branch");
         private List<String> branchIdPaths = List.of(
+                "newValue.id",
+                "oldValue.id",
                 "data.branch.id",
                 "data.branchId",
                 "data.branch_id",
@@ -344,6 +392,8 @@ public class IntegrationGatewayConfiguration {
                 "branch_id"
         );
         private List<String> statusPaths = List.of(
+                "newValue.status",
+                "oldValue.status",
                 "data.state.status",
                 "data.state.code",
                 "data.status",
@@ -353,6 +403,10 @@ public class IntegrationGatewayConfiguration {
                 "state"
         );
         private List<String> activeWindowPaths = List.of(
+                "newValue.activeWindow",
+                "newValue.resetTime",
+                "oldValue.activeWindow",
+                "oldValue.resetTime",
                 "data.state.activeWindow",
                 "data.state.active_window",
                 "data.activeWindow",
@@ -362,6 +416,8 @@ public class IntegrationGatewayConfiguration {
                 "active_window"
         );
         private List<String> queueSizePaths = List.of(
+                "newValue.queueSize",
+                "oldValue.queueSize",
                 "data.state.queueSize",
                 "data.queueSize",
                 "data.entity.state.queueSize",
@@ -616,6 +672,7 @@ public class IntegrationGatewayConfiguration {
     @Introspected
     public static class ScriptStorageSettings {
         private RedisScriptStorageSettings redis = new RedisScriptStorageSettings();
+        private FileScriptStorageSettings file = new FileScriptStorageSettings();
 
         public RedisScriptStorageSettings getRedis() {
             return redis;
@@ -623,6 +680,36 @@ public class IntegrationGatewayConfiguration {
 
         public void setRedis(RedisScriptStorageSettings redis) {
             this.redis = redis;
+        }
+
+        public FileScriptStorageSettings getFile() {
+            return file;
+        }
+
+        public void setFile(FileScriptStorageSettings file) {
+            this.file = file;
+        }
+    }
+
+    @Introspected
+    public static class FileScriptStorageSettings {
+        private boolean enabled = true;
+        private String path = "cache/program-scripts";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getPath() {
+            return path;
+        }
+
+        public void setPath(String path) {
+            this.path = path;
         }
     }
 

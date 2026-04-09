@@ -12,6 +12,7 @@ import ru.aritmos.integration.service.GatewayService;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +59,7 @@ public class GroovyScriptService {
         if (scriptBody == null || scriptBody.isBlank()) {
             throw new IllegalArgumentException("scriptBody обязателен");
         }
+        validateScriptBody(type, scriptBody);
         StoredGroovyScript script = new StoredGroovyScript(
                 scriptId,
                 type,
@@ -75,24 +77,83 @@ public class GroovyScriptService {
         return storage.get(scriptId);
     }
 
+    public boolean exists(String scriptId, SubjectPrincipal subject) {
+        authorizationService.requirePermission(subject, "programmable-script-manage");
+        return storage.get(scriptId) != null;
+    }
+
     public boolean delete(String scriptId, SubjectPrincipal subject) {
         authorizationService.requirePermission(subject, "programmable-script-manage");
         return storage.delete(scriptId);
     }
 
+    public List<StoredGroovyScript> list(SubjectPrincipal subject) {
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return storage.list();
+    }
+
+    public Map<String, Object> validateScript(String scriptId, SubjectPrincipal subject) {
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        StoredGroovyScript script = storage.get(scriptId);
+        if (script == null) {
+            throw new IllegalArgumentException("Groovy script не найден: " + scriptId);
+        }
+        return validateScriptBody(script.type(), script.scriptBody());
+    }
+
+    public Map<String, Object> validateScriptBody(GroovyScriptType type, String scriptBody) {
+        if (scriptBody == null || scriptBody.isBlank()) {
+            throw new IllegalArgumentException("scriptBody обязателен");
+        }
+        Binding binding = new Binding();
+        binding.setVariable("input", Map.of());
+        binding.setVariable("params", Map.of());
+        binding.setVariable("parameters", Map.of());
+        binding.setVariable("context", Map.of());
+        try {
+            new GroovyShell(binding).parse(scriptBody);
+            return Map.of("ok", true, "type", type.name(), "message", "Скрипт успешно прошел синтаксическую валидацию");
+        } catch (Exception ex) {
+            return Map.of("ok", false, "type", type.name(), "message", ex.getMessage());
+        }
+    }
+
     public Object execute(String scriptId,
                           JsonNode payload,
                           SubjectPrincipal subject) {
+        return executeAdvanced(scriptId, payload, Map.of(), Map.of(), subject);
+    }
+
+    /**
+     * Расширенный режим выполнения: отдельные параметры и контекст передаются в binding без потерь.
+     */
+    public Object executeAdvanced(String scriptId,
+                                  JsonNode payload,
+                                  Map<String, Object> parameters,
+                                  Map<String, Object> context,
+                                  SubjectPrincipal subject) {
         authorizationService.requirePermission(subject, "programmable-script-execute");
         StoredGroovyScript script = storage.get(scriptId);
         if (script == null) {
             throw new IllegalArgumentException("Groovy script не найден: " + scriptId);
         }
         Binding binding = new Binding();
-        Map<String, Object> input = payload == null
-                ? Map.of()
-                : objectMapper.convertValue(payload, Map.class);
+        Object payloadObject = payload == null ? Map.of() : objectMapper.convertValue(payload, Object.class);
+        Map<String, Object> input = payloadObject instanceof Map<?, ?> map
+                ? new LinkedHashMap<>(objectMapper.convertValue(map, Map.class))
+                : Map.of("value", payloadObject);
+        Map<String, Object> mergedParameters = resolveExecutionParameters(input, parameters);
+
+        binding.setVariable("payload", payloadObject);
         binding.setVariable("input", input);
+        binding.setVariable("parameters", mergedParameters);
+        binding.setVariable("params", mergedParameters);
+        binding.setVariable("context", context == null ? Map.of() : context);
+        binding.setVariable("execution", Map.of(
+                "payload", payloadObject,
+                "parameters", mergedParameters,
+                "context", context == null ? Map.of() : context
+        ));
         binding.setVariable("subject", subject.subjectId());
         binding.setVariable("externalRestClient", externalRestClient);
         binding.setVariable("messageBusGateway", messageBusGateway);
@@ -111,6 +172,21 @@ public class GroovyScriptService {
             return new HashMap<>(map);
         }
         return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveExecutionParameters(Map<String, Object> input,
+                                                           Map<String, Object> explicitParameters) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        Object payloadParams = input.get("parameters");
+        if (payloadParams instanceof Map<?, ?> map) {
+            merged.putAll((Map<String, Object>) map);
+        }
+        if (explicitParameters != null) {
+            merged.putAll(explicitParameters);
+        }
+        input.put("parameters", merged);
+        return merged;
     }
 
     /**

@@ -166,4 +166,58 @@ class GroovyScriptServiceTest {
         Assertions.assertEquals("BR-02", response.get("branchId"));
         Assertions.assertEquals("processed", response.get("status"));
     }
+
+    @Test
+    void shouldPassExecutionParametersWithoutLossInAdvancedMode() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+
+        GatewayService gatewayService = new GatewayService(
+                new RoutingService(cfg),
+                new StubVisitManagerClient(cfg),
+                new QueueCache(cfg),
+                new BranchStateCache(cfg),
+                new AuditService(),
+                new VisitManagerMetricsService()
+        );
+
+        GroovyScriptService service = new GroovyScriptService(
+                new InMemoryGroovyScriptStorage(),
+                cfg,
+                gatewayService,
+                new VisitManagerRestInvoker(cfg, new ObjectMapper()),
+                new ExternalRestClient(cfg, new ObjectMapper()),
+                new CustomerMessageBusGateway(cfg, List.of(new LoggingMessageBusAdapter())),
+                new AuthorizationService(),
+                new ObjectMapper()
+        );
+
+        SubjectPrincipal subject = new SubjectPrincipal("ops", Set.of("programmable-script-manage", "programmable-script-execute"));
+        service.save(
+                "advanced-params",
+                GroovyScriptType.BRANCH_CACHE_QUERY,
+                "return [payloadBranch: input.branchId, endpoint: params.endpoint, retries: parameters.retryCount, trace: context.traceId]",
+                "Проверка 100% передачи параметров",
+                subject
+        );
+
+        Object result = service.executeAdvanced(
+                "advanced-params",
+                new ObjectMapper().valueToTree(Map.of("branchId", "BR-07")),
+                Map.of("endpoint", "https://example.local", "retryCount", 3),
+                Map.of("traceId", "trace-42"),
+                subject
+        );
+
+        Assertions.assertInstanceOf(Map.class, result);
+        Map<?, ?> output = (Map<?, ?>) result;
+        Assertions.assertEquals("BR-07", output.get("payloadBranch"));
+        Assertions.assertEquals("https://example.local", output.get("endpoint"));
+        Assertions.assertEquals(3, output.get("retries"));
+        Assertions.assertEquals("trace-42", output.get("trace"));
+    }
 }

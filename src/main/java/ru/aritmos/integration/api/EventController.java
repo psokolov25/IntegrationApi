@@ -26,6 +26,7 @@ import ru.aritmos.integration.eventing.EventProcessingResult;
 import ru.aritmos.integration.eventing.EventRetryService;
 import ru.aritmos.integration.eventing.EventingStats;
 import ru.aritmos.integration.eventing.IntegrationEvent;
+import ru.aritmos.integration.eventing.EventOutboxMessage;
 import ru.aritmos.integration.security.RequestSecurityContext;
 import ru.aritmos.integration.security.core.AuthorizationService;
 
@@ -210,6 +211,49 @@ public class EventController {
         authorizationService.requirePermission(subject, "event-process");
         dispatcherService.resetStats();
         return Map.of("status", "OK");
+    }
+
+    @Get("/outbox")
+    @Operation(summary = "Снимок outbox", description = "Возвращает события, ожидающие отправки или завершившиеся ошибкой отправки.")
+    public List<EventOutboxMessage> outbox(HttpRequest<?> request,
+                                           @QueryValue(defaultValue = "100") int limit) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "event-process");
+        return dispatcherService.outboxSnapshot(limit);
+    }
+
+    @Get("/outbox/{eventId}")
+    @Operation(summary = "Получить outbox-сообщение", description = "Возвращает запись outbox по eventId.")
+    public EventOutboxMessage outboxById(HttpRequest<?> request, @PathVariable String eventId) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "event-process");
+        EventOutboxMessage message = dispatcherService.outboxById(eventId);
+        if (message == null) {
+            throw new NotFoundException("Outbox-сообщение не найдено: " + eventId);
+        }
+        return message;
+    }
+
+    @Post("/outbox/flush")
+    @Operation(summary = "Повторная отправка outbox", description = "Пытается повторно отправить pending/failed outbox-сообщения.")
+    public List<EventProcessingResult> flushOutbox(HttpRequest<?> request,
+                                                   @QueryValue(defaultValue = "100") int limit) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "event-process");
+        return dispatcherService.flushOutbox(limit);
+    }
+
+    @Post("/inbox/recover-stale")
+    @Operation(summary = "Восстановить stale inbox processing", description = "Переводит зависшие PROCESSING-записи inbox в FAILED по timeout policy.")
+    public Map<String, Object> recoverStaleInbox(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "event-process");
+        int recovered = dispatcherService.recoverStaleInboxProcessing();
+        return Map.of("recovered", recovered);
     }
 
     @Post("/maintenance/run")

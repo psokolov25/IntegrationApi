@@ -21,8 +21,10 @@ public class EventDispatcherService {
     private final EventInboxService inboxService;
     private final EventRetryService retryService;
     private final EventStoreService eventStoreService;
+    private final EventOutboxService outboxService;
     private final EventTransportAdapter transportAdapter;
     private final List<EventHandler> handlers;
+    private final EventingStatePersistenceService persistenceService;
     private final AtomicLong processedCount = new AtomicLong();
     private final AtomicLong duplicateCount = new AtomicLong();
     private final AtomicLong dlqCount = new AtomicLong();
@@ -33,14 +35,38 @@ public class EventDispatcherService {
                                   EventInboxService inboxService,
                                   EventRetryService retryService,
                                   EventStoreService eventStoreService,
+                                  EventOutboxService outboxService,
                                   EventTransportAdapter transportAdapter,
-                                  List<EventHandler> handlers) {
+                                  List<EventHandler> handlers,
+                                  EventingStatePersistenceService persistenceService) {
         this.configuration = configuration;
         this.inboxService = inboxService;
         this.retryService = retryService;
         this.eventStoreService = eventStoreService;
+        this.outboxService = outboxService;
         this.transportAdapter = transportAdapter;
         this.handlers = handlers;
+        this.persistenceService = persistenceService;
+        restoreStateIfPresent();
+    }
+
+    public EventDispatcherService(IntegrationGatewayConfiguration configuration,
+                                  EventInboxService inboxService,
+                                  EventRetryService retryService,
+                                  EventStoreService eventStoreService,
+                                  EventOutboxService outboxService,
+                                  EventTransportAdapter transportAdapter,
+                                  List<EventHandler> handlers) {
+        this(configuration, inboxService, retryService, eventStoreService, outboxService, transportAdapter, handlers, null);
+    }
+
+    public EventDispatcherService(IntegrationGatewayConfiguration configuration,
+                                  EventInboxService inboxService,
+                                  EventRetryService retryService,
+                                  EventStoreService eventStoreService,
+                                  EventTransportAdapter transportAdapter,
+                                  List<EventHandler> handlers) {
+        this(configuration, inboxService, retryService, eventStoreService, new EventOutboxService(), transportAdapter, handlers, null);
     }
 
     public EventProcessingResult process(IntegrationEvent event) {
@@ -48,35 +74,57 @@ public class EventDispatcherService {
             throw new IllegalStateException("Eventing отключен");
         }
         validate(event);
-        if (!inboxService.markIfFirst(event.eventId())) {
-            duplicateCount.incrementAndGet();
-            return new EventProcessingResult(event.eventId(), "DUPLICATE", "Событие уже обработано", 0);
-        }
+        try {
+            EventInboxService.InboxState inboxState = inboxService.beginProcessing(event.eventId());
+            if (inboxState == EventInboxService.InboxState.DUPLICATE
+                    || inboxState == EventInboxService.InboxState.IN_PROGRESS) {
+                duplicateCount.incrementAndGet();
+                flushOutboxByEventId(event.eventId(), 1);
+                return new EventProcessingResult(event.eventId(), "DUPLICATE", "Событие уже обработано", 0);
+            }
+            if (inboxState == EventInboxService.InboxState.INVALID) {
+                throw new IllegalArgumentException("eventId обязателен");
+            }
 
-        int attempts = 0;
-        while (attempts <= configuration.getEventing().getMaxRetries()) {
-            attempts++;
-            try {
-                EventHandler handler = handlers.stream()
-                        .filter(item -> item.supports(event.eventType()))
-                        .findFirst()
-                        .orElseThrow(() -> new IllegalArgumentException("Не найден handler для eventType=" + event.eventType()));
-                handler.handle(event);
-                eventStoreService.saveProcessed(event);
-                transportAdapter.publish(event);
-                processedCount.incrementAndGet();
-                return new EventProcessingResult(event.eventId(), "PROCESSED", "OK", attempts);
-            } catch (Exception ex) {
-                if (attempts > configuration.getEventing().getMaxRetries()) {
-                    retryService.toDlq(event);
-                    dlqCount.incrementAndGet();
-                    return new EventProcessingResult(event.eventId(), "DLQ", ex.getMessage(), attempts);
+            int attempts = 0;
+            while (attempts <= configuration.getEventing().getMaxRetries()) {
+                attempts++;
+                try {
+                    EventHandler handler = handlers.stream()
+                            .filter(item -> item.supports(event.eventType()))
+                            .findFirst()
+                            .orElseThrow(() -> new IllegalArgumentException("Не найден handler для eventType=" + event.eventType()));
+                    handler.handle(event);
+                    eventStoreService.saveProcessed(event);
+                    outboxService.stage(event);
+                    boolean sent = flushOutboxByEventId(event.eventId(), configuration.getEventing().getMaxRetries() + 1);
+                    inboxService.markProcessed(event.eventId());
+                    if (!sent) {
+                        return new EventProcessingResult(
+                                event.eventId(),
+                                "OUTBOX_PENDING",
+                                "Событие обработано, отправка во внешний транспорт отложена (outbox)",
+                                attempts
+                        );
+                    }
+                    processedCount.incrementAndGet();
+                    return new EventProcessingResult(event.eventId(), "PROCESSED", "OK", attempts);
+                } catch (Exception ex) {
+                    if (attempts > configuration.getEventing().getMaxRetries()) {
+                        retryService.toDlq(event);
+                        inboxService.markFailed(event.eventId(), ex.getMessage());
+                        dlqCount.incrementAndGet();
+                        return new EventProcessingResult(event.eventId(), "DLQ", ex.getMessage(), attempts);
+                    }
                 }
             }
+            retryService.toDlq(event);
+            inboxService.markFailed(event.eventId(), "Unknown failure");
+            dlqCount.incrementAndGet();
+            return new EventProcessingResult(event.eventId(), "DLQ", "Unknown failure", attempts);
+        } finally {
+            persistState();
         }
-        retryService.toDlq(event);
-        dlqCount.incrementAndGet();
-        return new EventProcessingResult(event.eventId(), "DLQ", "Unknown failure", attempts);
     }
 
     public EventProcessingResult replay(String eventId) {
@@ -108,8 +156,13 @@ public class EventDispatcherService {
                 dlqCount.get(),
                 replayCount.get(),
                 inboxService.size(),
+                inboxService.processingSize(),
                 eventStoreService.size(),
-                retryService.size()
+                retryService.size(),
+                outboxService.size(),
+                outboxService.pendingSize(),
+                outboxService.failedSize(),
+                outboxService.deadSize()
         );
     }
 
@@ -147,6 +200,8 @@ public class EventDispatcherService {
     public void clearProcessedStore() {
         eventStoreService.clear();
         inboxService.clear();
+        outboxService.clear();
+        persistState();
     }
 
     public EventingHealth health() {
@@ -176,7 +231,9 @@ public class EventDispatcherService {
             inboxService.clear();
         }
 
-        return new EventingMaintenanceReport(removedFromDlq, removedFromProcessed, removedFromInbox, stats());
+        EventingMaintenanceReport report = new EventingMaintenanceReport(removedFromDlq, removedFromProcessed, removedFromInbox, stats());
+        persistState();
+        return report;
     }
 
     public EventingMaintenanceReport previewMaintenance() {
@@ -198,7 +255,7 @@ public class EventDispatcherService {
     }
 
     public EventingSnapshot exportSnapshot() {
-        return new EventingSnapshot(eventStoreService.snapshot(), retryService.dlqSnapshot(), stats());
+        return new EventingSnapshot(eventStoreService.snapshot(), retryService.dlqSnapshot(), outboxService.snapshot(), stats());
     }
 
     public EventingImportResult importSnapshot(EventingSnapshot snapshot, boolean clearBeforeImport) {
@@ -210,18 +267,23 @@ public class EventDispatcherService {
             retryService.clear();
             eventStoreService.clear();
             inboxService.clear();
+            outboxService.clear();
         }
         Map<String, IntegrationEvent> processed = snapshot.processed() == null ? Map.of() : snapshot.processed();
         List<IntegrationEvent> dlq = snapshot.dlq() == null ? List.of() : snapshot.dlq();
+        Map<String, EventOutboxMessage> outbox = snapshot.outbox() == null ? Map.of() : snapshot.outbox();
         eventStoreService.saveAll(processed);
         retryService.toDlqAll(dlq);
+        outboxService.saveAll(outbox);
         int marked = inboxService.markAll(processed.keySet());
-        return new EventingImportResult(
+        EventingImportResult result = new EventingImportResult(
                 processed.size(),
                 dlq.size(),
                 marked,
                 stats()
         );
+        persistState();
+        return result;
     }
 
     public EventingImportResult previewImport(EventingSnapshot snapshot) {
@@ -243,6 +305,7 @@ public class EventDispatcherService {
         int projectedProcessedStore = clearBeforeImport ? processed.size() : current.processedStoreSize() + processed.size();
         int projectedDlqSize = clearBeforeImport ? dlq.size() : current.dlqSize() + dlq.size();
         int projectedInboxSize = clearBeforeImport ? processed.size() : current.inboxSize() + processed.size();
+        int projectedOutboxSize = clearBeforeImport ? 0 : current.outboxSize();
         return new EventingImportResult(
                 processed.size(),
                 dlq.size(),
@@ -253,8 +316,13 @@ public class EventDispatcherService {
                         current.dlqCount(),
                         current.replayCount(),
                         projectedInboxSize,
+                        current.inboxInProgressSize(),
                         projectedProcessedStore,
-                        projectedDlqSize
+                        projectedDlqSize,
+                        projectedOutboxSize,
+                        current.outboxPendingSize(),
+                        current.outboxFailedSize(),
+                        current.outboxDeadSize()
                 )
         );
     }
@@ -268,6 +336,7 @@ public class EventDispatcherService {
         int projectedProcessedStore = clearBeforeImport ? processed : current.processedStoreSize() + processed;
         int projectedDlqSize = clearBeforeImport ? dlq : current.dlqSize() + dlq;
         int projectedInboxSize = clearBeforeImport ? processed : current.inboxSize() + processed;
+        int projectedOutboxSize = clearBeforeImport ? 0 : current.outboxSize();
         int usagePercent = configuration.getEventing().getSnapshotImportMaxEvents() <= 0
                 ? 0
                 : (int) Math.min(100, Math.round((double) total * 100 / configuration.getEventing().getSnapshotImportMaxEvents()));
@@ -287,8 +356,13 @@ public class EventDispatcherService {
                         current.dlqCount(),
                         current.replayCount(),
                         projectedInboxSize,
+                        current.inboxInProgressSize(),
                         projectedProcessedStore,
-                        projectedDlqSize
+                        projectedDlqSize,
+                        projectedOutboxSize,
+                        current.outboxPendingSize(),
+                        current.outboxFailedSize(),
+                        current.outboxDeadSize()
                 ),
                 validation
         );
@@ -296,6 +370,7 @@ public class EventDispatcherService {
 
     public EventingCapabilities capabilities() {
         return new EventingCapabilities(
+                true,
                 true,
                 true,
                 true,
@@ -428,6 +503,64 @@ public class EventDispatcherService {
         }
     }
 
+    public List<EventOutboxMessage> outboxSnapshot(int limit) {
+        if (limit <= 0) {
+            return outboxService.pending(Integer.MAX_VALUE);
+        }
+        return outboxService.pending(limit);
+    }
+
+    public EventOutboxMessage outboxById(String eventId) {
+        return outboxService.getById(eventId);
+    }
+
+    public List<EventProcessingResult> flushOutbox(int limit) {
+        List<EventProcessingResult> results = new ArrayList<>();
+        List<EventOutboxMessage> candidates = outboxService.pending(limit <= 0 ? Integer.MAX_VALUE : limit, Instant.now());
+        for (EventOutboxMessage message : candidates) {
+            boolean sent = flushOutboxByEventId(message.eventId(), configuration.getEventing().getMaxRetries() + 1);
+            results.add(new EventProcessingResult(
+                    message.eventId(),
+                    sent ? "OUTBOX_SENT" : "OUTBOX_FAILED",
+                    sent ? "Отправлено из outbox" : "Не удалось отправить из outbox",
+                    message.attempts()
+            ));
+        }
+        persistState();
+        return results;
+    }
+
+    private boolean flushOutboxByEventId(String eventId, int maxAttempts) {
+        EventOutboxMessage message = outboxService.getById(eventId);
+        if (message == null || "SENT".equals(message.status()) || "DEAD".equals(message.status())) {
+            return true;
+        }
+        for (int i = 0; i < Math.max(1, maxAttempts); i++) {
+            try {
+                outboxService.markAttempt(eventId);
+                transportAdapter.publish(message.event());
+                outboxService.markSent(eventId);
+                return true;
+            } catch (Exception ex) {
+                outboxService.markFailed(
+                        eventId,
+                        ex.getMessage(),
+                        configuration.getEventing().getOutboxBackoffSeconds(),
+                        configuration.getEventing().getOutboxMaxAttempts()
+                );
+            }
+        }
+        return false;
+    }
+
+    public int recoverStaleInboxProcessing() {
+        int recovered = inboxService.recoverStaleProcessing(configuration.getEventing().getInboxProcessingTimeoutSeconds());
+        if (recovered > 0) {
+            persistState();
+        }
+        return recovered;
+    }
+
     private IntegrationEvent withReplayId(IntegrationEvent event, String suffix) {
         return new IntegrationEvent(
                 event.eventId() + "-" + suffix + "-" + replaySequence.incrementAndGet(),
@@ -436,5 +569,33 @@ public class EventDispatcherService {
                 event.occurredAt(),
                 event.payload()
         );
+    }
+
+    private void restoreStateIfPresent() {
+        if (persistenceService == null || !persistenceService.enabled()) {
+            return;
+        }
+        persistenceService.load().ifPresent(snapshot -> {
+            Map<String, IntegrationEvent> processed = snapshot.processed() == null ? Map.of() : snapshot.processed();
+            List<IntegrationEvent> dlq = snapshot.dlq() == null ? List.of() : snapshot.dlq();
+            Map<String, EventOutboxMessage> outbox = snapshot.outbox() == null ? Map.of() : snapshot.outbox();
+            eventStoreService.saveAll(processed);
+            retryService.toDlqAll(dlq);
+            outboxService.saveAll(outbox);
+            inboxService.markAll(processed.keySet());
+            if (snapshot.stats() != null) {
+                processedCount.set(snapshot.stats().processedCount());
+                duplicateCount.set(snapshot.stats().duplicateCount());
+                dlqCount.set(snapshot.stats().dlqCount());
+                replayCount.set(snapshot.stats().replayCount());
+            }
+        });
+    }
+
+    private void persistState() {
+        if (persistenceService == null || !persistenceService.enabled()) {
+            return;
+        }
+        persistenceService.save(exportSnapshot());
     }
 }

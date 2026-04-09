@@ -31,6 +31,28 @@
   - `PUT /api/v1/branches/{branchId}/state`
   - `GET /api/v1/branches/states`
 - Programmable: `POST /api/v1/program/{endpointId}`
+
+- ITS (integration templates) для programmable handlers:
+  - Предпросмотр: `POST /api/v1/program/templates/import/preview` (multipart `archive`).
+  - Импорт: `POST /api/v1/program/templates/import` (multipart `archive` + JSON `parameterValues` + `replaceExisting`).
+  - Экспорт: `POST /api/v1/program/templates/export` (выгрузка `.its`).
+  - Формат placeholder в Groovy: `{{paramKey}}`; значения берутся из `parameterValues` и/или `defaultValue` в `template.yml`.
+- Расширенное выполнение скриптов:
+  - `POST /api/v1/program/scripts/{scriptId}/execute-advanced`
+  - `POST /api/v1/program/scripts/{scriptId}/debug-advanced`
+  - `parameters` передаются в Groovy binding как `params`/`parameters`, `context` доступен как `context`.
+- Персистентное хранилище Groovy-скриптов:
+  - `integration.programmable-api.script-storage.file.enabled=true`;
+  - `integration.programmable-api.script-storage.file.path=cache/program-scripts`;
+  - директория `cache/` предназначена для runtime-кэшей и бинарных инструментов (не коммитится в git).
+- Персистентность eventing snapshot:
+  - `integration.eventing.state-persistence-enabled=true`;
+  - `integration.eventing.state-persistence-path=cache/eventing-state/snapshot.json`;
+  - при рестарте сервис поднимает `processed/dlq/outbox` из сохраненного snapshot.
+- Дополнительные параметры надежности:
+  - `integration.eventing.outbox-backoff-seconds`;
+  - `integration.eventing.outbox-max-attempts` (после превышения статус outbox -> `DEAD`);
+  - `integration.eventing.inbox-processing-timeout-seconds` + endpoint `POST /api/v1/events/inbox/recover-stale`.
 - Programmable Groovy scripts:
   - `PUT /api/v1/program/scripts/{scriptId}`
   - `GET /api/v1/program/scripts/{scriptId}`
@@ -47,6 +69,8 @@
 - Eventing DLQ clear: `DELETE /api/v1/events/dlq`
 - Eventing processed store: `GET /api/v1/events/processed`, `GET /api/v1/events/processed/{eventId}`
 - Eventing processed clear: `DELETE /api/v1/events/processed`
+- Eventing outbox snapshot: `GET /api/v1/events/outbox`, `GET /api/v1/events/outbox/{eventId}`
+- Eventing outbox flush: `POST /api/v1/events/outbox/flush?limit=100`
 - Eventing stats: `GET /api/v1/events/stats`
 - Eventing health: `GET /api/v1/events/stats/health`
 - Eventing stats reset: `DELETE /api/v1/events/stats`
@@ -85,8 +109,9 @@
 
 ## Инциденты
 - DLQ растет: проверить handler для `eventType` и валидацию payload.
+- Outbox растет: проверить доступность внешнего транспорта и выполнить `POST /api/v1/events/outbox/flush?limit=N`.
 - Branch-state «застывает»: проверить, что приходят события `branch-state-updated`/`VISIT_*`, и нет ли слишком большого debounce-окна.
-- Branch-state не обновляется по `ENTITY_CHANGED`: проверить совпадение `class-name-paths` + `accepted-class-names`, и что `branch-id/status/active-window` доступны по настроенным paths.
+- Branch-state не обновляется по `ENTITY_CHANGED`: проверить совпадение `class-name-paths` + `accepted-class-names`, и что `branch-id/status/active-window` доступны по настроенным paths. Если в payload приходит snapshot (`oldValue/newValue`) без канонических полей branch-state, используется fallback: `branchId` из `newValue.id`, `activeWindow` из `newValue.activeWindow|resetTime`, `queueSize` из суммарного числа `servicePoints[*].visits`, `status=UNKNOWN`.
 - Branch-state «скачет назад»: проверить out-of-order события и `updatedAt` в payload.
 - Для `VISIT_*` убедиться, что `occurredAt` монотонно возрастает в рамках пары `visitManagerId + branchId`; более старые события должны игнорироваться.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
