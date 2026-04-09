@@ -1,0 +1,2126 @@
+openapi: 3.0.1
+info:
+  title: Integration API
+  description: "Интеграционный API для маршрутизации запросов, event-driven синхро\
+    низации и programmable-интеграций."
+  contact:
+    name: Integration API Team
+  license:
+    name: Proprietary
+  version: v1
+servers:
+- url: /
+  description: Текущий адрес сервиса
+- url: http://localhost:8080
+  description: Локальный запуск
+security:
+- apiKeyAuth: []
+- bearerAuth: []
+tags:
+- name: Integration Gateway
+  description: REST-операции очередей/визитов/состояния отделений
+- name: Eventing
+  description: Ingest/replay/DLQ/snapshot интерфейсы event pipeline
+- name: Programmable API
+  description: Управление и запуск программируемых endpoint-ов и Groovy-скриптов
+- name: Internal Auth
+  description: Получение internal JWT для технических клиентов
+- name: Health
+  description: Liveness/readiness проверки и сводное состояние системы
+paths:
+  /api/v1/auth/token:
+    post:
+      tags:
+      - Internal Auth
+      summary: Получить internal токен
+      description: Выдает токен для technical client в internal режиме безопасности.
+      operationId: token
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InternalTokenRequest"
+        required: true
+      responses:
+        "200":
+          description: token 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalTokenResponse"
+  /api/v1/branches/states:
+    get:
+      tags:
+      - Integration Gateway
+      summary: Снимок кэша состояний отделений
+      description: Возвращает текущий in-memory снимок cache актуальных состояний
+        отделений.
+      operationId: branchStatesSnapshot
+      responses:
+        "200":
+          description: branchStatesSnapshot 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BranchStateDto"
+  /api/v1/branches/{branchId}/state:
+    get:
+      tags:
+      - Integration Gateway
+      summary: Получить состояние отделения
+      description: "Возвращает состояние отделения из кэша, при промахе запрашивае\
+        т VisitManager."
+      operationId: branchState
+      parameters:
+      - name: branchId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: target
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Состояние отделения получено.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchStateDto"
+        "404":
+          description: Отделение не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      tags:
+      - Integration Gateway
+      summary: Обновить состояние отделения
+      description: Проксирует обновление состояния отделения в VisitManager и актуализирует
+        локальный кэш.
+      operationId: updateBranchState
+      parameters:
+      - name: branchId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: target
+        in: query
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BranchStateUpdateRequest"
+        required: true
+      responses:
+        "200":
+          description: Состояние отделения обновлено.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchStateDto"
+        "400":
+          description: Ошибка валидации body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Недостаточно прав branch-state-manage.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/branches/{branchId}/state/refresh:
+    post:
+      tags:
+      - Integration Gateway
+      summary: Принудительно обновить состояние отделения
+      description: Синхронизирует кэш состояния отделения с VisitManager независимо
+        от текущего cache-hit.
+      operationId: refreshBranchState
+      parameters:
+      - name: branchId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: target
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: refreshBranchState 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BranchStateDto"
+  /api/v1/events/capabilities:
+    get:
+      tags:
+      - Eventing
+      summary: Capabilities eventing API
+      description: Список доступных возможностей текущего eventing-инкремента.
+      operationId: capabilities
+      responses:
+        "200":
+          description: capabilities 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingCapabilities"
+  /api/v1/events/dlq:
+    get:
+      tags:
+      - Eventing
+      summary: DLQ snapshot
+      description: Текущий список событий в DLQ (in-memory).
+      operationId: dlq
+      parameters:
+      - name: eventType
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: source
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+          default: 100
+      - name: offset
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: desc
+        in: query
+        required: true
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          description: dlq 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationEvent"
+    delete:
+      tags:
+      - Eventing
+      summary: Очистить DLQ
+      description: Удаляет все события из in-memory DLQ.
+      operationId: clearDlq
+      responses:
+        "200":
+          description: clearDlq 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/events/dlq/{eventId}:
+    get:
+      tags:
+      - Eventing
+      summary: Получить событие из DLQ
+      description: Возвращает одно событие по eventId из in-memory DLQ.
+      operationId: dlqById
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: dlqById 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationEvent"
+    delete:
+      tags:
+      - Eventing
+      summary: Удалить событие из DLQ
+      description: Удаляет событие из DLQ по eventId.
+      operationId: removeFromDlq
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: removeFromDlq 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/events/export:
+    get:
+      tags:
+      - Eventing
+      summary: Экспорт snapshot eventing
+      description: Экспорт in-memory состояния eventing для миграции/диагностики.
+      operationId: exportSnapshot
+      responses:
+        "200":
+          description: exportSnapshot 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingSnapshot"
+  /api/v1/events/import:
+    post:
+      tags:
+      - Eventing
+      summary: Импорт snapshot eventing
+      description: Импортирует in-memory состояние eventing.
+      operationId: importSnapshot
+      parameters:
+      - name: clearBeforeImport
+        in: query
+        required: true
+        schema:
+          type: boolean
+          default: false
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventingSnapshot"
+        required: true
+      responses:
+        "200":
+          description: importSnapshot 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingImportResult"
+  /api/v1/events/import/analyze:
+    post:
+      tags:
+      - Eventing
+      summary: Расширенный анализ snapshot import
+      description: "Возвращает dry-run анализ import (валидность, прогноз размеров\
+        , переполнения лимитов)."
+      operationId: analyzeImportSnapshot
+      parameters:
+      - name: clearBeforeImport
+        in: query
+        required: true
+        schema:
+          type: boolean
+          default: false
+      - name: strictPolicies
+        in: query
+        required: true
+        schema:
+          type: boolean
+          default: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventingSnapshot"
+        required: true
+      responses:
+        "200":
+          description: analyzeImportSnapshot 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingImportAnalysis"
+  /api/v1/events/import/preview:
+    post:
+      tags:
+      - Eventing
+      summary: Предпросмотр импорта snapshot
+      description: Показывает итоги будущего импорта без изменения состояния.
+      operationId: previewImportSnapshot
+      parameters:
+      - name: clearBeforeImport
+        in: query
+        required: true
+        schema:
+          type: boolean
+          default: false
+      - name: strictPolicies
+        in: query
+        required: true
+        schema:
+          type: boolean
+          default: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventingSnapshot"
+        required: true
+      responses:
+        "200":
+          description: previewImportSnapshot 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingImportResult"
+  /api/v1/events/import/validate:
+    post:
+      tags:
+      - Eventing
+      summary: Валидация snapshot
+      description: Проверяет корректность snapshot и возвращает список нарушений без
+        изменения состояния.
+      operationId: validateSnapshot
+      parameters:
+      - name: strictPolicies
+        in: query
+        required: true
+        schema:
+          type: boolean
+          default: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventingSnapshot"
+        required: true
+      responses:
+        "200":
+          description: validateSnapshot 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingSnapshotValidation"
+  /api/v1/events/inbox/recover-stale:
+    post:
+      tags:
+      - Eventing
+      summary: Восстановить stale inbox processing
+      description: Переводит зависшие PROCESSING-записи inbox в FAILED по timeout
+        policy.
+      operationId: recoverStaleInbox
+      responses:
+        "200":
+          description: recoverStaleInbox 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/events/ingest:
+    post:
+      tags:
+      - Eventing
+      summary: Принять событие
+      description: Обработка через ingestion/validation/idempotency/retry/DLQ pipeline.
+      operationId: ingest
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationEvent"
+        required: true
+      responses:
+        "200":
+          description: ingest 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventProcessingResult"
+  /api/v1/events/limits:
+    get:
+      tags:
+      - Eventing
+      summary: Лимиты eventing
+      description: Текущие лимиты и политики import-governance.
+      operationId: limits
+      responses:
+        "200":
+          description: limits 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingLimits"
+  /api/v1/events/maintenance/preview:
+    get:
+      tags:
+      - Eventing
+      summary: Предпросмотр maintenance
+      description: Показывает сколько записей будет удалено без фактических изменений.
+      operationId: previewMaintenance
+      responses:
+        "200":
+          description: previewMaintenance 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingMaintenanceReport"
+  /api/v1/events/maintenance/run:
+    post:
+      tags:
+      - Eventing
+      summary: Запустить maintenance eventing
+      description: Prune/trim in-memory DLQ и processed store по retention/threshold
+        policy.
+      operationId: runMaintenance
+      responses:
+        "200":
+          description: runMaintenance 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingMaintenanceReport"
+  /api/v1/events/outbox:
+    get:
+      tags:
+      - Eventing
+      summary: Снимок outbox
+      description: "Возвращает события, ожидающие отправки или завершившиеся ошибк\
+        ой отправки."
+      operationId: outbox
+      parameters:
+      - name: limit
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        "200":
+          description: outbox 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventOutboxMessage"
+  /api/v1/events/outbox/flush:
+    post:
+      tags:
+      - Eventing
+      summary: Повторная отправка outbox
+      description: Пытается повторно отправить pending/failed outbox-сообщения.
+      operationId: flushOutbox
+      parameters:
+      - name: limit
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        "200":
+          description: flushOutbox 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventProcessingResult"
+  /api/v1/events/outbox/{eventId}:
+    get:
+      tags:
+      - Eventing
+      summary: Получить outbox-сообщение
+      description: Возвращает запись outbox по eventId.
+      operationId: outboxById
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: outboxById 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventOutboxMessage"
+  /api/v1/events/processed:
+    get:
+      tags:
+      - Eventing
+      summary: Список обработанных событий
+      description: Снимок in-memory replay store.
+      operationId: processed
+      parameters:
+      - name: eventType
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: source
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+          default: 100
+      - name: offset
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: desc
+        in: query
+        required: true
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "200":
+          description: processed 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntegrationEvent"
+    delete:
+      tags:
+      - Eventing
+      summary: Очистить processed store
+      description: Очищает in-memory replay store и inbox idempotency.
+      operationId: clearProcessed
+      responses:
+        "200":
+          description: clearProcessed 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/events/processed/{eventId}:
+    get:
+      tags:
+      - Eventing
+      summary: Получить обработанное событие
+      description: Возвращает событие из replay store по eventId.
+      operationId: processedById
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: processedById 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationEvent"
+  /api/v1/events/replay-dlq:
+    post:
+      tags:
+      - Eventing
+      summary: Bulk replay из DLQ
+      description: Повторно обрабатывает до N событий из DLQ.
+      operationId: replayDlqBulk
+      parameters:
+      - name: limit
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int32
+          default: 100
+      responses:
+        "200":
+          description: replayDlqBulk 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventProcessingResult"
+  /api/v1/events/replay-dlq/{eventId}:
+    post:
+      tags:
+      - Eventing
+      summary: Replay события из DLQ
+      description: "Повторная обработка события, попавшего в DLQ."
+      operationId: replayDlq
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: replayDlq 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventProcessingResult"
+  /api/v1/events/replay/{eventId}:
+    post:
+      tags:
+      - Eventing
+      summary: Replay события
+      description: Повторная обработка ранее успешно сохраненного события.
+      operationId: replay
+      parameters:
+      - name: eventId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: replay 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventProcessingResult"
+  /api/v1/events/stats:
+    get:
+      tags:
+      - Eventing
+      summary: Статистика eventing
+      description: Операционные метрики eventing pipeline (in-memory).
+      operationId: stats
+      responses:
+        "200":
+          description: stats 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingStats"
+    delete:
+      tags:
+      - Eventing
+      summary: Сброс статистики eventing
+      description: Сбрасывает in-memory счетчики eventing pipeline.
+      operationId: resetStats
+      responses:
+        "200":
+          description: resetStats 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/events/stats/health:
+    get:
+      tags:
+      - Eventing
+      summary: Здоровье eventing
+      description: Оценка состояния eventing по порогам DLQ/duplicate.
+      operationId: health
+      responses:
+        "200":
+          description: health 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventingHealth"
+  /api/v1/events/version:
+    get:
+      tags:
+      - Eventing
+      summary: Версия eventing stage
+      description: Текущий stage eventing-функционала.
+      operationId: version
+      responses:
+        "200":
+          description: version 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+  /api/v1/metrics/visit-managers:
+    get:
+      tags:
+      - Integration Gateway
+      summary: Метрики вызовов VisitManager
+      description: Возвращает счетчики успешных и ошибочных обращений по каждому target
+        VisitManager.
+      operationId: metrics
+      responses:
+        "200":
+          description: metrics 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VisitManagerMetricDto"
+  /api/v1/program/messages/inbound:
+    post:
+      tags:
+      - Programmable API
+      summary: Обработать входящее сообщение шины
+      description: Выполняет Groovy-реакции на сообщения брокеров/шин заказчика.
+      operationId: reactOnInboundMessage
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboundMessageReactionRequest"
+        required: true
+      responses:
+        "200":
+          description: reactOnInboundMessage 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /api/v1/program/scripts:
+    get:
+      tags:
+      - Programmable API
+      summary: Список Groovy-скриптов
+      description: Возвращает все сохраненные скрипты для панели управления и редактора.
+      operationId: listScripts
+      responses:
+        "200":
+          description: listScripts 200 response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GroovyScriptInfoDto"
+  /api/v1/program/scripts/validate:
+    post:
+      tags:
+      - Programmable API
+      summary: Валидировать текст скрипта
+      description: Проверяет синтаксис перед сохранением (editor validate).
+      operationId: validateScriptBody
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroovyScriptUpsertRequest"
+        required: true
+      responses:
+        "200":
+          description: validateScriptBody 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/program/scripts/{scriptId}:
+    get:
+      tags:
+      - Programmable API
+      summary: Получить Groovy-скрипт
+      description: Возвращает сохраненный Groovy-скрипт по id.
+      operationId: getScript
+      parameters:
+      - name: scriptId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: getScript 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroovyScriptInfoDto"
+    put:
+      tags:
+      - Programmable API
+      summary: Сохранить Groovy-скрипт
+      description: Сохраняет/обновляет Groovy-скрипт в Redis (или fallback-хранилище).
+      operationId: saveScript
+      parameters:
+      - name: scriptId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroovyScriptUpsertRequest"
+        required: true
+      responses:
+        "200":
+          description: saveScript 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroovyScriptInfoDto"
+    delete:
+      tags:
+      - Programmable API
+      summary: Удалить Groovy-скрипт
+      description: Удаляет Groovy-скрипт из Redis (или fallback-хранилища).
+      operationId: deleteScript
+      parameters:
+      - name: scriptId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: deleteScript 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/program/scripts/{scriptId}/debug:
+    post:
+      tags:
+      - Programmable API
+      summary: Debug-выполнение скрипта
+      description: "Базовый инструмент отладки: выполняет скрипт и возвращает резу\
+        льтат/ошибку с метрикой времени."
+      operationId: debugScript
+      parameters:
+      - name: scriptId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+        required: true
+      responses:
+        "200":
+          description: debugScript 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/program/scripts/{scriptId}/debug-advanced:
+    post:
+      tags:
+      - Programmable API
+      summary: Debug-выполнение скрипта (расширенный режим)
+      description: Возвращает результат/ошибку и передает параметры выполнения в binding
+        без потерь.
+      operationId: debugScriptAdvanced
+      parameters:
+      - name: scriptId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScriptExecutionRequest"
+        required: true
+      responses:
+        "200":
+          description: debugScriptAdvanced 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/program/scripts/{scriptId}/execute:
+    post:
+      tags:
+      - Programmable API
+      summary: Выполнить Groovy-скрипт
+      description: Выполняет сохраненный Groovy-скрипт для branch-cache запроса или
+        REST-действия в VisitManager.
+      operationId: executeScript
+      parameters:
+      - name: scriptId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+        required: true
+      responses:
+        "200":
+          description: executeScript 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/v1/program/scripts/{scriptId}/execute-advanced:
+    post:
+      tags:
+      - Programmable API
+      summary: Выполнить Groovy-скрипт (расширенный режим)
+      description: "Гарантированно передает параметры выполнения в binding: params/parameters/context."
+      operationId: executeScriptAdvanced
+      parameters:
+      - name: scriptId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScriptExecutionRequest"
+        required: true
+      responses:
+        "200":
+          description: executeScriptAdvanced 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/v1/program/scripts/{scriptId}/validate:
+    post:
+      tags:
+      - Programmable API
+      summary: Валидировать сохраненный скрипт
+      description: Проверяет синтаксис Groovy-скрипта без фактического исполнения
+        бизнес-логики.
+      operationId: validateStoredScript
+      parameters:
+      - name: scriptId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: validateStoredScript 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/program/templates/export:
+    post:
+      tags:
+      - Programmable API
+      summary: Экспорт ITS-архива
+      description: Экспортирует выбранные programmable-обработчики во внешний ITS
+        архив (zip с расширением .its).
+      operationId: exportTemplate
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IntegrationTemplateExportRequest"
+        required: true
+      responses:
+        "200":
+          description: exportTemplate 200 response
+          content:
+            application/octet-stream:
+              schema:
+                type: array
+                items:
+                  type: string
+                  format: byte
+  /api/v1/program/templates/import:
+    post:
+      tags:
+      - Programmable API
+      summary: Импорт ITS-архива
+      description: "Импортирует programmable-обработчики из ITS, подставляя параме\
+        тры из GUI/дефолтов template.yml."
+      operationId: importTemplate
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archive:
+                  type: string
+                  format: binary
+                parameterValues:
+                  type: string
+                replaceExisting:
+                  type: string
+            encoding:
+              archive:
+                contentType: application/octet-stream
+        required: true
+      responses:
+        "200":
+          description: importTemplate 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /api/v1/program/templates/import/preview:
+    post:
+      tags:
+      - Programmable API
+      summary: Предпросмотр ITS-архива
+      description: Читает integration template архив (*.its) и возвращает структуру
+        параметров/скриптов до импорта.
+      operationId: previewTemplateImport
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                archive:
+                  type: string
+                  format: binary
+            encoding:
+              archive:
+                contentType: application/octet-stream
+        required: true
+      responses:
+        "200":
+          description: Предпросмотр успешно построен
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationTemplatePreviewDto"
+  /api/v1/program/{endpointId}:
+    post:
+      tags:
+      - Programmable API
+      summary: Вызов programmable endpoint
+      description: Исполняет заранее зарегистрированную безопасную операцию без произвольного
+        eval.
+      operationId: execute
+      parameters:
+      - name: endpointId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+        required: true
+      responses:
+        "200":
+          description: execute 200 response
+          content:
+            application/json:
+              schema:
+                type: object
+  /api/v1/queues:
+    get:
+      tags:
+      - Integration Gateway
+      summary: Получить очереди по филиалу
+      description: "Возвращает нормализованный список очередей, используя кеш и ма\
+        ршрутизацию."
+      operationId: getQueues
+      parameters:
+      - name: branchId
+        in: query
+        description: Идентификатор отделения VisitManager.
+        required: true
+        schema:
+          minLength: 1
+          type: string
+      - name: target
+        in: query
+        description: "Явный target VisitManager. Если пусто, используется routing."
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Список очередей получен.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QueueListResponse"
+        "401":
+          description: Субъект не аутентифицирован.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Недостаточно прав queue-view.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/v1/queues/aggregate:
+    get:
+      tags:
+      - Integration Gateway
+      summary: Агрегировать очереди по нескольким филиалам
+      description: "Выполняет fan-out вызовы к нескольким VisitManager, возвращая\
+        \ partial результат при недоступности части контуров."
+      operationId: aggregateQueues
+      parameters:
+      - name: branchIds
+        in: query
+        required: true
+        schema:
+          minLength: 1
+          type: string
+      responses:
+        "200":
+          description: aggregateQueues 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AggregatedQueuesResponse"
+  /api/v1/visitors/{visitorId}/call:
+    post:
+      tags:
+      - Integration Gateway
+      summary: Вызвать посетителя
+      description: Проксирует команду вызова в соответствующий VisitManager с аудитом
+        и инвалидацией кеша.
+      operationId: callVisitor
+      parameters:
+      - name: visitorId
+        in: path
+        description: Идентификатор визита/посетителя.
+        required: true
+        schema:
+          type: string
+      - name: target
+        in: query
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CallVisitorRequest"
+        required: true
+      responses:
+        "200":
+          description: Посетитель вызван.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CallVisitorResponse"
+        "400":
+          description: Некорректное тело команды вызова.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Недостаточно прав queue-call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /health:
+    get:
+      tags:
+      - Health
+      summary: Сводный health
+      description: Синоним readiness для упрощённой интеграции monitoring-систем.
+      operationId: health_1
+      responses:
+        "200":
+          description: health_1 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatusResponse"
+  /health/liveness:
+    get:
+      tags:
+      - Health
+      summary: Liveness
+      description: "Проверка, что процесс приложения запущен."
+      operationId: liveness
+      responses:
+        "200":
+          description: liveness 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatusResponse"
+  /health/readiness:
+    get:
+      tags:
+      - Health
+      summary: Readiness
+      description: Проверка готовности с учётом состояния eventing и конфигурации
+        безопасности.
+      operationId: readiness
+      responses:
+        "200":
+          description: readiness 200 response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatusResponse"
+components:
+  schemas:
+    AggregatedQueuesResponse:
+      type: object
+      properties:
+        successful:
+          type: array
+          description: Успешно полученные ответы по отделениям.
+          items:
+            $ref: "#/components/schemas/QueueListResponse"
+        failed:
+          type: array
+          description: "Ошибки по отделениям, которые не удалось получить."
+          items:
+            $ref: "#/components/schemas/AggregatedQueuesResponse.BranchError"
+        partial:
+          type: boolean
+          description: Признак частичной деградации (partial availability).
+      description: Агрегированный результат запросов очередей по нескольким отделениям.
+    AggregatedQueuesResponse.BranchError:
+      type: object
+      properties:
+        branch_id:
+          type: string
+          description: Идентификатор отделения.
+          example: BR-404
+        target:
+          type: string
+          description: Целевой VisitManager.
+          example: vm-backup
+        message:
+          type: string
+          description: Текст ошибки.
+          example: Таймаут при обращении к VisitManager
+      description: Ошибка агрегации для конкретного отделения.
+    BranchStateDto:
+      type: object
+      properties:
+        branch_id:
+          type: string
+          description: Идентификатор отделения.
+          example: BR-001
+        source_visit_manager_id:
+          type: string
+          description: Идентификатор VisitManager-источника.
+          example: vm-main
+        status:
+          type: string
+          description: Статус отделения.
+          example: OPEN
+        active_window:
+          type: string
+          description: Активное окно обслуживания.
+          example: 09:00-18:00
+        queue_size:
+          type: integer
+          description: Число посетителей в очередях.
+          format: int32
+          example: 4
+        updated_at:
+          type: string
+          description: Время последнего обновления состояния.
+          format: date-time
+        cached:
+          type: boolean
+          description: "Признак, что данные взяты из кэша."
+        updated_by:
+          type: string
+          description: "Идентификатор пользователя/системы, выполнившей изменение."
+          example: system:eventing
+      description: Текущее состояние отделения.
+    BranchStateUpdateRequest:
+      required:
+      - active_window
+      - queue_size
+      - status
+      - updated_by
+      type: object
+      properties:
+        status:
+          minLength: 1
+          type: string
+        active_window:
+          minLength: 1
+          type: string
+        queue_size:
+          minimum: 0
+          type: integer
+          format: int32
+        updated_by:
+          minLength: 1
+          type: string
+      description: Команда обновления состояния отделения для кастомных внешних пультов.
+    CallVisitorRequest:
+      required:
+      - branch_id
+      - idempotency_key
+      - operator_id
+      - queue_id
+      type: object
+      properties:
+        branch_id:
+          minLength: 1
+          type: string
+          description: Идентификатор отделения.
+          example: BR-001
+        queue_id:
+          minLength: 1
+          type: string
+          description: Идентификатор очереди.
+          example: Q-101
+        operator_id:
+          minLength: 1
+          type: string
+          description: Идентификатор оператора.
+          example: operator-17
+        idempotency_key:
+          minLength: 1
+          type: string
+          description: Ключ идемпотентности операции.
+          example: 9aa878b7-3afe-4f53-8488-a9f9357f95e0
+      description: Команда вызова посетителя.
+    CallVisitorResponse:
+      type: object
+      properties:
+        visit_id:
+          type: string
+          description: Идентификатор визита.
+          example: VIS-7788
+        status:
+          type: string
+          description: Итоговый статус операции вызова.
+          example: CALLED
+        source_visit_manager_id:
+          type: string
+          description: "Идентификатор VisitManager, обработавшего операцию."
+          example: vm-main
+      description: Результат вызова посетителя.
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Машиночитаемый код ошибки.
+          example: validation_error
+        message:
+          type: string
+          description: Сообщение об ошибке.
+          example: Параметр branchId обязателен.
+        status:
+          type: integer
+          description: HTTP статус ответа.
+          format: int32
+          example: 400
+        method:
+          type: string
+          description: HTTP-метод запроса.
+          example: POST
+        path:
+          type: string
+          description: Путь запроса.
+          example: /api/v1/events/ingest
+        timestamp:
+          type: string
+          description: "Время формирования ошибки (UTC, ISO-8601)."
+          format: date-time
+        trace_id:
+          type: string
+          description: Корреляционный идентификатор для трассировки.
+          example: 5c9d2f8b4fcb4cb2
+      description: Единый формат ошибки API.
+    EventOutboxMessage:
+      required:
+      - attempts
+      - event
+      - event_id
+      - last_error
+      - next_retry_at
+      - status
+      - updated_at
+      type: object
+      properties:
+        event_id:
+          type: string
+        event:
+          $ref: "#/components/schemas/IntegrationEvent"
+        status:
+          type: string
+        attempts:
+          type: integer
+          format: int32
+        last_error:
+          type: string
+        next_retry_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      description: Сообщение outbox для надежной отправки во внешний транспорт.
+    EventProcessingResult:
+      required:
+      - attempts
+      - event_id
+      - message
+      - status
+      type: object
+      properties:
+        event_id:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        attempts:
+          type: integer
+          format: int32
+      description: Результат обработки события.
+    EventingCapabilities:
+      required:
+      - dlq_operations
+      - health_checks
+      - ingestion
+      - maintenance
+      - outbox_reliability
+      - replay
+      - snapshot_export_import
+      type: object
+      properties:
+        ingestion:
+          type: boolean
+        replay:
+          type: boolean
+        dlq_operations:
+          type: boolean
+        maintenance:
+          type: boolean
+        snapshot_export_import:
+          type: boolean
+        health_checks:
+          type: boolean
+        outbox_reliability:
+          type: boolean
+      description: Декларация включенных возможностей eventing API.
+    EventingHealth:
+      required:
+      - reasons
+      - stats
+      - status
+      type: object
+      properties:
+        status:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        stats:
+          $ref: "#/components/schemas/EventingStats"
+      description: Оценка здоровья eventing-контура по in-memory метрикам.
+    EventingImportAnalysis:
+      required:
+      - clear_before_import
+      - imported_dlq
+      - imported_processed
+      - limit_usage_percent
+      - projected_dlq_overflow
+      - projected_processed_overflow
+      - projected_stats
+      - strict_policies
+      - total_imported
+      - valid
+      - validation
+      type: object
+      properties:
+        valid:
+          type: boolean
+        strict_policies:
+          type: boolean
+        clear_before_import:
+          type: boolean
+        imported_processed:
+          type: integer
+          format: int32
+        imported_dlq:
+          type: integer
+          format: int32
+        total_imported:
+          type: integer
+          format: int32
+        limit_usage_percent:
+          type: integer
+          format: int32
+        projected_processed_overflow:
+          type: boolean
+        projected_dlq_overflow:
+          type: boolean
+        projected_stats:
+          $ref: "#/components/schemas/EventingStats"
+        validation:
+          $ref: "#/components/schemas/EventingSnapshotValidation"
+      description: Расширенный анализ import snapshot (dry-run).
+    EventingImportResult:
+      required:
+      - imported_dlq
+      - imported_inbox_ids
+      - imported_processed
+      - stats_after
+      type: object
+      properties:
+        imported_processed:
+          type: integer
+          format: int32
+        imported_dlq:
+          type: integer
+          format: int32
+        imported_inbox_ids:
+          type: integer
+          format: int32
+        stats_after:
+          $ref: "#/components/schemas/EventingStats"
+      description: Результат импорта eventing snapshot.
+    EventingLimits:
+      required:
+      - max_dlq_events
+      - max_processed_events
+      - reject_cross_list_duplicates
+      - require_matching_processed_keys
+      - retention_seconds
+      - snapshot_import_max_events
+      type: object
+      properties:
+        snapshot_import_max_events:
+          type: integer
+          format: int32
+        require_matching_processed_keys:
+          type: boolean
+        reject_cross_list_duplicates:
+          type: boolean
+        max_dlq_events:
+          type: integer
+          format: int32
+        max_processed_events:
+          type: integer
+          format: int32
+        retention_seconds:
+          type: integer
+          format: int64
+      description: Лимиты и политики import-governance для eventing snapshot.
+    EventingMaintenanceReport:
+      required:
+      - removed_from_dlq
+      - removed_from_inbox
+      - removed_from_processed
+      - stats_after
+      type: object
+      properties:
+        removed_from_dlq:
+          type: integer
+          format: int32
+        removed_from_processed:
+          type: integer
+          format: int32
+        removed_from_inbox:
+          type: integer
+          format: int32
+        stats_after:
+          $ref: "#/components/schemas/EventingStats"
+      description: Результат maintenance-процедур eventing (prune/trim).
+    EventingSnapshot:
+      required:
+      - dlq
+      - outbox
+      - processed
+      - stats
+      type: object
+      properties:
+        processed:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/IntegrationEvent"
+        dlq:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntegrationEvent"
+        outbox:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/EventOutboxMessage"
+        stats:
+          $ref: "#/components/schemas/EventingStats"
+      description: Экспортный снимок in-memory состояния eventing.
+    EventingSnapshotValidation:
+      required:
+      - dlq_events
+      - processed_events
+      - total_events
+      - valid
+      - violations
+      type: object
+      properties:
+        valid:
+          type: boolean
+        processed_events:
+          type: integer
+          format: int32
+        dlq_events:
+          type: integer
+          format: int32
+        total_events:
+          type: integer
+          format: int32
+        violations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventingSnapshotViolation"
+      description: Результат проверки snapshot перед import.
+    EventingSnapshotViolation:
+      required:
+      - code
+      - message
+      - path
+      type: object
+      properties:
+        code:
+          type: string
+        path:
+          type: string
+        message:
+          type: string
+      description: Детализация нарушения в snapshot-validation.
+    EventingStats:
+      required:
+      - dlq_count
+      - dlq_size
+      - duplicate_count
+      - inbox_in_progress_size
+      - inbox_size
+      - outbox_dead_size
+      - outbox_failed_size
+      - outbox_pending_size
+      - outbox_size
+      - processed_count
+      - processed_store_size
+      - replay_count
+      type: object
+      properties:
+        processed_count:
+          type: integer
+          format: int64
+        duplicate_count:
+          type: integer
+          format: int64
+        dlq_count:
+          type: integer
+          format: int64
+        replay_count:
+          type: integer
+          format: int64
+        inbox_size:
+          type: integer
+          format: int32
+        inbox_in_progress_size:
+          type: integer
+          format: int32
+        processed_store_size:
+          type: integer
+          format: int32
+        dlq_size:
+          type: integer
+          format: int32
+        outbox_size:
+          type: integer
+          format: int32
+        outbox_pending_size:
+          type: integer
+          format: int32
+        outbox_failed_size:
+          type: integer
+          format: int32
+        outbox_dead_size:
+          type: integer
+          format: int32
+      description: Снимок операционных метрик eventing-пайплайна (in-memory).
+    GroovyScriptInfoDto:
+      required:
+      - description
+      - script_body
+      - script_id
+      - type
+      - updated_at
+      - updated_by
+      type: object
+      properties:
+        script_id:
+          type: string
+        type:
+          $ref: "#/components/schemas/GroovyScriptType"
+        description:
+          type: string
+        script_body:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        updated_by:
+          type: string
+      description: Метаданные сохраненного Groovy-скрипта.
+    GroovyScriptType:
+      type: string
+      description: Типы Groovy-скриптов programmable API.
+      enum:
+      - BRANCH_CACHE_QUERY
+      - VISIT_MANAGER_ACTION
+      - MESSAGE_BUS_REACTION
+    GroovyScriptUpsertRequest:
+      required:
+      - description
+      - script_body
+      - type
+      type: object
+      properties:
+        type:
+          $ref: "#/components/schemas/GroovyScriptType"
+        description:
+          type: string
+        script_body:
+          type: string
+      description: Запрос на создание/обновление Groovy-скрипта.
+    HealthStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Сводный статус компонента.
+          example: UP
+        service:
+          type: string
+          description: Имя сервиса.
+          example: integration-api
+        timestamp:
+          type: string
+          description: Момент времени формирования ответа.
+          format: date-time
+        components:
+          type: object
+          additionalProperties:
+            type: string
+          description: Статусы подкомпонентов и режимов.
+      description: Структура health-ответа.
+    InboundMessageReactionRequest:
+      required:
+      - broker_id
+      - headers
+      - key
+      - payload
+      - script_id
+      - topic
+      type: object
+      properties:
+        broker_id:
+          type: string
+        topic:
+          type: string
+        key:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        script_id:
+          type: string
+      description: Запрос на обработку входящего сообщения от шины/брокера заказчика.
+    IntegrationEvent:
+      required:
+      - event_id
+      - event_type
+      - occurred_at
+      - payload
+      - source
+      type: object
+      properties:
+        event_id:
+          type: string
+        event_type:
+          type: string
+        source:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+      description: Унифицированное входящее интеграционное событие.
+    IntegrationTemplateExportRequest:
+      type: object
+      properties:
+        template_id:
+          type: string
+          description: Идентификатор шаблона
+          example: custom-branch-sync
+        name:
+          type: string
+          description: Название шаблона
+          example: Кастомная синхронизация branch-state
+        description:
+          type: string
+          description: Описание шаблона
+        script_ids:
+          type: array
+          description: Список scriptId для включения в архив
+          items:
+            type: string
+        parameter_defaults:
+          type: object
+          additionalProperties:
+            type: string
+          description: Значения по умолчанию для параметров (key -> defaultValue)
+      description: Параметры экспорта programmable-обработчиков в ITS-архив
+    IntegrationTemplateParameterDto:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Ключ параметра для подстановки в Groovy-шаблон
+          example: vmBaseUrl
+        label:
+          type: string
+          description: Человекочитаемое имя параметра
+          example: Базовый URL VisitManager
+        description:
+          type: string
+          description: Подсказка для оператора в GUI
+          example: URL сервиса VisitManager для REST-вызовов
+        required:
+          type: boolean
+          description: Обязателен ли параметр при импорте
+        default_value:
+          type: string
+          description: Значение по умолчанию
+      description: "Параметр integration template: структура и значение по умолчан\
+        ию"
+    IntegrationTemplatePreviewDto:
+      type: object
+      properties:
+        template_id:
+          type: string
+          description: Идентификатор шаблона
+          example: visitmanager-core
+        name:
+          type: string
+          description: Название шаблона
+          example: VisitManager core templates
+        description:
+          type: string
+          description: Описание шаблона
+        version:
+          type: string
+          description: Версия шаблона
+          example: 1.0.0
+        parameters:
+          type: array
+          description: Список параметров для подстановки
+          items:
+            $ref: "#/components/schemas/IntegrationTemplateParameterDto"
+        scripts:
+          type: array
+          description: "Скрипты, входящие в архив"
+          items:
+            $ref: "#/components/schemas/IntegrationTemplateScriptDto"
+      description: "Предпросмотр import-архива ITS: скрипты, параметры и метаданны\
+        е"
+    IntegrationTemplateScriptDto:
+      type: object
+      properties:
+        script_id:
+          type: string
+          description: Идентификатор скрипта внутри Integration API
+          example: visit-created-handler
+        type:
+          type: string
+          description: Тип programmable-скрипта
+          example: MESSAGE_BUS_REACTION
+        description:
+          type: string
+          description: Описание назначения скрипта
+          example: Реакция на входящие события VISIT_CREATED
+        file:
+          type: string
+          description: Путь к groovy-файлу внутри ITS-архива
+          example: scripts/visit-created-handler.groovy
+      description: "Скрипт-обработчик, входящий в integration template"
+    InternalTokenRequest:
+      required:
+      - client_id
+      - client_secret
+      type: object
+      properties:
+        client_id:
+          minLength: 1
+          type: string
+        client_secret:
+          minLength: 1
+          type: string
+      description: Запрос на получение internal access token.
+    InternalTokenResponse:
+      required:
+      - access_token
+      - expires_in
+      - token_type
+      type: object
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+          format: int64
+      description: Ответ выдачи internal access token.
+    QueueItemDto:
+      type: object
+      properties:
+        queue_id:
+          type: string
+          description: Идентификатор очереди.
+          example: Q-101
+        queue_name:
+          type: string
+          description: Название очереди.
+          example: Кредитные карты
+        waiting_count:
+          type: integer
+          description: Количество ожидающих в очереди.
+          format: int32
+          example: 7
+      description: Элемент списка очередей.
+    QueueListResponse:
+      type: object
+      properties:
+        branch_id:
+          type: string
+          description: Идентификатор отделения.
+          example: BR-001
+        source_visit_manager_id:
+          type: string
+          description: Идентификатор VisitManager-источника.
+          example: vm-main
+        queues:
+          type: array
+          description: Нормализованный список очередей.
+          items:
+            $ref: "#/components/schemas/QueueItemDto"
+        cached:
+          type: boolean
+          description: "Признак, что данные выданы из кэша."
+      description: Ответ со списком очередей конкретного отделения.
+    ScriptExecutionRequest:
+      type: object
+      properties:
+        payload:
+          type: array
+          description: Бизнес payload для логики скрипта
+          items:
+            type: object
+        parameters:
+          type: object
+          additionalProperties: true
+          description: Параметры выполнения (100% передаются в binding как params/parameters)
+        context:
+          type: object
+          additionalProperties: true
+          description: "Дополнительный контекст выполнения (например correlationId,\
+            \ origin, stage)"
+      description: "Запрос выполнения скрипта: payload + параметры + контекст"
+    VisitManagerMetricDto:
+      required:
+      - error_count
+      - success_count
+      - target
+      type: object
+      properties:
+        target:
+          type: string
+        success_count:
+          type: integer
+          format: int64
+        error_count:
+          type: integer
+          format: int64
+      description: Метрика вызовов по конкретной инсталляции VisitManager.
