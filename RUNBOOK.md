@@ -102,6 +102,9 @@
 - Проверить конфигурацию Redis-хранилища скриптов `integration.programmable-api.script-storage.redis.*`.
 - Проверить реестр внешних REST сервисов `integration.programmable-api.external-rest-services[*]`.
 - Проверить реестр брокеров/шин `integration.programmable-api.message-brokers[*]` и типы adapter-ов.
+- Для `WEBHOOK_HTTP`/`HTTP_WEBHOOK` в `message-brokers[*].properties` обязательно задать:
+  - `url` — endpoint webhook;
+  - опционально `method` (`POST|PUT|PATCH`) и `timeoutSeconds`.
 - Проверить роутинг реакций на входящие сообщения `integration.programmable-api.message-reactions[*]` (broker-id/topic/script-id).
 - При анализе ошибок использовать поля `code/status/method/path/traceId` из `ErrorResponse`.
 - Для совместимости с VisitManager сверять текущие контракты по `openapi.yml` (ветка `dev`).

@@ -4,7 +4,8 @@ const state = {
     languages: [],
     translations: {},
     language: localStorage.getItem("integration-ui-lang") || "ru",
-    importPreview: null
+    importPreview: null,
+    scriptEditorFontSize: Number(localStorage.getItem("integration-ui-editor-font-size") || "13")
 };
 
 const el = (id) => document.getElementById(id);
@@ -47,6 +48,12 @@ async function apiPut(url, body) {
     return resp.json();
 }
 
+async function apiDelete(url) {
+    const resp = await fetch(url, {method: "DELETE", headers: headers({"Content-Type": "application/json"})});
+    if (!resp.ok) throw new Error(`${url}: HTTP ${resp.status}`);
+    return resp.json();
+}
+
 async function loadI18n() {
     state.languages = await fetch("/ui/i18n/languages.json").then(r => r.json());
     for (const lang of state.languages) {
@@ -68,6 +75,68 @@ function applyI18n() {
     document.querySelectorAll("[data-i18n]").forEach(node => {
         node.textContent = t(node.getAttribute("data-i18n"));
     });
+}
+
+function setupEditorExperience() {
+    const editor = el("scriptBodyInput");
+    editor.style.fontSize = `${state.scriptEditorFontSize}px`;
+    editor.style.whiteSpace = el("wordWrapInput").checked ? "pre-wrap" : "pre";
+
+    editor.addEventListener("keydown", (event) => {
+        if (event.key === "Tab") {
+            event.preventDefault();
+            const start = editor.selectionStart;
+            const end = editor.selectionEnd;
+            editor.value = `${editor.value.substring(0, start)}    ${editor.value.substring(end)}`;
+            editor.selectionStart = editor.selectionEnd = start + 4;
+            renderExecutionParamsFromScript();
+            return;
+        }
+        if (event.key === "s" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            saveScript().catch(e => setStatus(`Ошибка save: ${e.message}`));
+            return;
+        }
+        if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault();
+            if (event.shiftKey) {
+                executeScriptAdvanced().catch(e => setStatus(`Ошибка execute: ${e.message}`));
+            } else {
+                debugScript().catch(e => setStatus(`Ошибка debug: ${e.message}`));
+            }
+        }
+    });
+    editor.addEventListener("keyup", updateEditorCursorInfo);
+    editor.addEventListener("click", updateEditorCursorInfo);
+    updateEditorCursorInfo();
+}
+
+function updateEditorCursorInfo() {
+    const editor = el("scriptBodyInput");
+    const pos = editor.selectionStart ?? 0;
+    const linesBefore = editor.value.substring(0, pos).split("\n");
+    const line = linesBefore.length;
+    const col = linesBefore[linesBefore.length - 1].length + 1;
+    el("editorCursorInfo").textContent = `Ln ${line}, Col ${col}`;
+}
+
+function setEditorFontSize(delta) {
+    state.scriptEditorFontSize = Math.max(11, Math.min(24, state.scriptEditorFontSize + delta));
+    localStorage.setItem("integration-ui-editor-font-size", String(state.scriptEditorFontSize));
+    el("scriptBodyInput").style.fontSize = `${state.scriptEditorFontSize}px`;
+}
+
+function formatJsonTextarea(elementId, label) {
+    const value = parseJsonInput(elementId, label);
+    el(elementId).value = JSON.stringify(value, null, 2);
+}
+
+function formatScriptBody() {
+    const raw = el("scriptBodyInput").value || "";
+    const lines = raw.split("\n").map(line => line.replace(/\s+$/g, ""));
+    el("scriptBodyInput").value = lines.join("\n");
+    updateEditorCursorInfo();
+    renderExecutionParamsFromScript();
 }
 
 function paintStats(stats) {
@@ -93,6 +162,18 @@ async function refreshDashboard() {
     paintStats(stats);
     el("dlqView").textContent = JSON.stringify(dlq, null, 2);
     el("outboxView").textContent = JSON.stringify(outbox, null, 2);
+}
+
+function parseJsonInput(elementId, label) {
+    const raw = (el(elementId).value || "").trim();
+    if (!raw) {
+        return {};
+    }
+    try {
+        return JSON.parse(raw);
+    } catch (e) {
+        throw new Error(`${label}: некорректный JSON (${e.message})`);
+    }
 }
 
 function fillScriptForm(script) {
@@ -192,7 +273,18 @@ async function debugScript() {
     const result = await apiPost(`/api/v1/program/scripts/${encodeURIComponent(scriptId)}/debug-advanced`, {
         payload,
         parameters: collectExecutionParameterValues(),
-        context: {source: "ui-debug"}
+        context: parseJsonInput("debugContextInput", "Debug context")
+    });
+    el("debugResultView").textContent = JSON.stringify(result, null, 2);
+}
+
+async function executeScriptAdvanced() {
+    const scriptId = el("scriptIdInput").value.trim();
+    const payload = parseJsonInput("debugPayloadInput", "Payload");
+    const result = await apiPost(`/api/v1/program/scripts/${encodeURIComponent(scriptId)}/execute-advanced`, {
+        payload,
+        parameters: collectExecutionParameterValues(),
+        context: parseJsonInput("debugContextInput", "Execute context")
     });
     el("debugResultView").textContent = JSON.stringify(result, null, 2);
 }
@@ -290,6 +382,118 @@ async function exportTemplate() {
     setStatus(`Exported: ${fileName}`);
 }
 
+async function replayDlqBulk() {
+    const limit = Number(el("replayDlqLimitInput").value || "50");
+    const result = await apiPost(`/api/v1/events/replay-dlq?limit=${encodeURIComponent(limit)}`, {});
+    el("eventOpsResultView").textContent = JSON.stringify(result, null, 2);
+    await refreshDashboard();
+    setStatus(`Replay DLQ завершен, обработано: ${result.length ?? 0}`);
+}
+
+async function previewMaintenance() {
+    const result = await apiGet("/api/v1/events/maintenance/preview");
+    el("eventOpsResultView").textContent = JSON.stringify(result, null, 2);
+    setStatus("Maintenance preview готов");
+}
+
+async function runMaintenance() {
+    const result = await apiPost("/api/v1/events/maintenance/run", {});
+    el("eventOpsResultView").textContent = JSON.stringify(result, null, 2);
+    await refreshDashboard();
+    setStatus("Maintenance run выполнен");
+}
+
+async function clearDlq() {
+    const result = await apiDelete("/api/v1/events/dlq");
+    el("eventOpsResultView").textContent = JSON.stringify(result, null, 2);
+    await refreshDashboard();
+    setStatus(`DLQ очищен: ${result.removed ?? 0}`);
+}
+
+async function exportEventSnapshot() {
+    const snapshot = await apiGet("/api/v1/events/export");
+    el("snapshotPayloadInput").value = JSON.stringify(snapshot, null, 2);
+    el("snapshotResultView").textContent = JSON.stringify({
+        processed: snapshot.processed?.length ?? 0,
+        dlq: snapshot.dlq?.length ?? 0,
+        outbox: snapshot.outbox?.length ?? 0
+    }, null, 2);
+    setStatus("Snapshot экспортирован в форму");
+}
+
+async function runSnapshotOperation(mode) {
+    const payload = parseJsonInput("snapshotPayloadInput", "Snapshot payload");
+    const clearBeforeImport = el("snapshotClearBeforeImportInput").checked;
+    const strictPolicies = el("snapshotStrictInput").checked;
+    const query = `clearBeforeImport=${clearBeforeImport}&strictPolicies=${strictPolicies}`;
+    let result;
+    if (mode === "validate") {
+        result = await apiPost(`/api/v1/events/import/validate?strictPolicies=${strictPolicies}`, payload);
+    } else if (mode === "preview") {
+        result = await apiPost(`/api/v1/events/import/preview?${query}`, payload);
+    } else if (mode === "analyze") {
+        result = await apiPost(`/api/v1/events/import/analyze?${query}`, payload);
+    } else if (mode === "import") {
+        result = await apiPost(`/api/v1/events/import?clearBeforeImport=${clearBeforeImport}`, payload);
+    } else {
+        throw new Error(`Неизвестный режим snapshot операции: ${mode}`);
+    }
+    el("snapshotResultView").textContent = JSON.stringify(result, null, 2);
+    if (mode === "import") {
+        await refreshDashboard();
+    }
+    setStatus(`Snapshot операция выполнена: ${mode}`);
+}
+
+async function loadConnectorsCatalog() {
+    const result = await apiGet("/api/v1/program/connectors/catalog");
+    el("connectorsCatalogView").textContent = JSON.stringify(result, null, 2);
+    setStatus("Каталог коннекторов загружен");
+}
+
+async function loadSupportedBrokerTypes() {
+    const result = await apiGet("/api/v1/program/connectors/broker-types");
+    el("brokerTypesView").textContent = JSON.stringify(result, null, 2);
+    setStatus("Список поддерживаемых broker types загружен");
+}
+
+async function invokeExternalRest() {
+    const result = await apiPost("/api/v1/program/connectors/rest/invoke", {
+        serviceId: el("restServiceIdInput").value.trim(),
+        method: el("restMethodInput").value.trim(),
+        path: el("restPathInput").value.trim(),
+        headers: parseJsonInput("restHeadersInput", "REST headers"),
+        body: parseJsonInput("restBodyInput", "REST body")
+    });
+    el("connectorsResultView").textContent = JSON.stringify(result, null, 2);
+    setStatus("REST connector invoke выполнен");
+}
+
+async function publishToBus() {
+    const result = await apiPost("/api/v1/program/connectors/bus/publish", {
+        brokerId: el("brokerIdInput").value.trim(),
+        topic: el("brokerTopicInput").value.trim(),
+        key: el("brokerKeyInput").value.trim(),
+        headers: parseJsonInput("brokerHeadersInput", "Bus headers"),
+        payload: parseJsonInput("brokerPayloadInput", "Bus payload")
+    });
+    el("connectorsResultView").textContent = JSON.stringify(result, null, 2);
+    setStatus("Публикация в брокер выполнена");
+}
+
+async function runInboundReaction() {
+    const result = await apiPost("/api/v1/program/messages/inbound", {
+        brokerId: el("inboundBrokerIdInput").value.trim(),
+        topic: el("inboundTopicInput").value.trim(),
+        key: el("inboundKeyInput").value.trim(),
+        payload: parseJsonInput("inboundPayloadInput", "Inbound payload"),
+        headers: parseJsonInput("inboundHeadersInput", "Inbound headers"),
+        scriptId: el("inboundScriptIdInput").value.trim()
+    });
+    el("connectorsResultView").textContent = JSON.stringify(result, null, 2);
+    setStatus(`Inbound reaction выполнен, результатов: ${Array.isArray(result) ? result.length : 0}`);
+}
+
 function init() {
     el("apiKeyInput").value = state.apiKey;
 
@@ -305,9 +509,11 @@ function init() {
     };
     el("refreshStatsBtn").onclick = () => refreshDashboard().then(() => setStatus("Stats updated")).catch(e => setStatus(`Ошибка stats: ${e.message}`));
     el("flushOutboxBtn").onclick = async () => {
-        await apiPost("/api/v1/events/outbox/flush?limit=100", {});
+        const limit = Number(el("flushOutboxLimitInput").value || "100");
+        const result = await apiPost(`/api/v1/events/outbox/flush?limit=${encodeURIComponent(limit)}`, {});
+        el("eventOpsResultView").textContent = JSON.stringify(result, null, 2);
         await refreshDashboard();
-        setStatus("Outbox flushed");
+        setStatus(`Outbox flushed: ${result.length ?? 0}`);
     };
     el("recoverInboxBtn").onclick = async () => {
         const result = await apiPost("/api/v1/events/inbox/recover-stale", {});
@@ -324,9 +530,50 @@ function init() {
     el("refreshExecutionParamsBtn").onclick = () => renderExecutionParamsFromScript();
     el("addExecutionParamBtn").onclick = () => addExecutionParam();
     el("scriptBodyInput").addEventListener("input", () => renderExecutionParamsFromScript());
+    el("scriptBodyInput").addEventListener("input", () => updateEditorCursorInfo());
     el("saveScriptBtn").onclick = () => saveScript().catch(e => setStatus(`Ошибка save: ${e.message}`));
     el("validateScriptBtn").onclick = () => validateScript().catch(e => setStatus(`Ошибка validate: ${e.message}`));
     el("debugScriptBtn").onclick = () => debugScript().catch(e => setStatus(`Ошибка debug: ${e.message}`));
+    el("executeScriptBtn").onclick = () => executeScriptAdvanced().catch(e => setStatus(`Ошибка execute: ${e.message}`));
+    el("replayDlqBtn").onclick = () => replayDlqBulk().catch(e => setStatus(`Ошибка replay DLQ: ${e.message}`));
+    el("maintenancePreviewBtn").onclick = () => previewMaintenance().catch(e => setStatus(`Ошибка maintenance preview: ${e.message}`));
+    el("maintenanceRunBtn").onclick = () => runMaintenance().catch(e => setStatus(`Ошибка maintenance run: ${e.message}`));
+    el("clearDlqBtn").onclick = () => clearDlq().catch(e => setStatus(`Ошибка clear DLQ: ${e.message}`));
+    el("snapshotExportBtn").onclick = () => exportEventSnapshot().catch(e => setStatus(`Ошибка snapshot export: ${e.message}`));
+    el("snapshotValidateBtn").onclick = () => runSnapshotOperation("validate").catch(e => setStatus(`Ошибка snapshot validate: ${e.message}`));
+    el("snapshotPreviewBtn").onclick = () => runSnapshotOperation("preview").catch(e => setStatus(`Ошибка snapshot preview: ${e.message}`));
+    el("snapshotAnalyzeBtn").onclick = () => runSnapshotOperation("analyze").catch(e => setStatus(`Ошибка snapshot analyze: ${e.message}`));
+    el("snapshotImportBtn").onclick = () => runSnapshotOperation("import").catch(e => setStatus(`Ошибка snapshot import: ${e.message}`));
+    el("loadConnectorsBtn").onclick = () => loadConnectorsCatalog().catch(e => setStatus(`Ошибка connectors catalog: ${e.message}`));
+    el("loadBrokerTypesBtn").onclick = () => loadSupportedBrokerTypes().catch(e => setStatus(`Ошибка broker types: ${e.message}`));
+    el("invokeRestBtn").onclick = () => invokeExternalRest().catch(e => setStatus(`Ошибка invoke REST: ${e.message}`));
+    el("publishBusBtn").onclick = () => publishToBus().catch(e => setStatus(`Ошибка publish bus: ${e.message}`));
+    el("runInboundReactionBtn").onclick = () => runInboundReaction().catch(e => setStatus(`Ошибка inbound reaction: ${e.message}`));
+    el("formatPayloadBtn").onclick = () => {
+        try {
+            formatJsonTextarea("debugPayloadInput", "Payload");
+            setStatus("Payload JSON отформатирован");
+        } catch (e) {
+            setStatus(`Ошибка format payload: ${e.message}`);
+        }
+    };
+    el("formatContextBtn").onclick = () => {
+        try {
+            formatJsonTextarea("debugContextInput", "Context");
+            setStatus("Context JSON отформатирован");
+        } catch (e) {
+            setStatus(`Ошибка format context: ${e.message}`);
+        }
+    };
+    el("formatScriptBtn").onclick = () => {
+        formatScriptBody();
+        setStatus("Скрипт отформатирован");
+    };
+    el("fontIncreaseBtn").onclick = () => setEditorFontSize(1);
+    el("fontDecreaseBtn").onclick = () => setEditorFontSize(-1);
+    el("wordWrapInput").onchange = () => {
+        el("scriptBodyInput").style.whiteSpace = el("wordWrapInput").checked ? "pre-wrap" : "pre";
+    };
     el("previewTemplateBtn").onclick = () => previewTemplate().catch(e => setStatus(`Ошибка preview: ${e.message}`));
     el("importTemplateBtn").onclick = () => importTemplate().catch(e => setStatus(`Ошибка import: ${e.message}`));
     el("exportTemplateBtn").onclick = () => exportTemplate().catch(e => setStatus(`Ошибка export: ${e.message}`));
@@ -334,6 +581,7 @@ function init() {
     loadI18n()
         .then(() => refreshDashboard())
         .then(() => loadScripts())
+        .then(() => setupEditorExperience())
         .catch(e => setStatus(`Ошибка инициализации: ${e.message}`));
 }
 

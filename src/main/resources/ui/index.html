@@ -27,20 +27,27 @@
         <div class="cards" id="statsCards"></div>
         <div class="actions-row">
             <button id="refreshStatsBtn" data-i18n="refresh">Обновить статистику</button>
+            <label><span data-i18n="outboxLimit">Outbox limit</span> <input id="flushOutboxLimitInput" type="number" min="1" value="100"/></label>
             <button id="flushOutboxBtn" data-i18n="flush">Flush outbox</button>
-            <button id="recoverInboxBtn">Recover stale inbox</button>
+            <label><span data-i18n="replayDlqLimit">Replay DLQ limit</span> <input id="replayDlqLimitInput" type="number" min="1" value="50"/></label>
+            <button id="replayDlqBtn" data-i18n="replayDlqBulk">Replay DLQ bulk</button>
+            <button id="recoverInboxBtn" data-i18n="recoverInbox">Recover stale inbox</button>
+            <button id="clearDlqBtn" data-i18n="clearDlq">Clear DLQ</button>
+            <button id="maintenancePreviewBtn" data-i18n="maintenancePreview">Maintenance preview</button>
+            <button id="maintenanceRunBtn" data-i18n="maintenanceRun">Maintenance run</button>
         </div>
+        <pre id="eventOpsResultView" class="mono"></pre>
     </section>
 
     <section class="panel">
         <h2 data-i18n="control">Контрольная панель</h2>
         <div class="split">
             <div>
-                <h3>DLQ (top 20)</h3>
+                <h3 data-i18n="dlqTop">DLQ (top 20)</h3>
                 <pre id="dlqView" class="mono"></pre>
             </div>
             <div>
-                <h3>Outbox (top 20)</h3>
+                <h3 data-i18n="outboxTop">Outbox (top 20)</h3>
                 <pre id="outboxView" class="mono"></pre>
             </div>
         </div>
@@ -53,8 +60,13 @@
             <button id="loadScriptBtn" data-i18n="load">Загрузить</button>
             <button id="newScriptBtn" data-i18n="new">Новый</button>
             <button id="saveScriptBtn" data-i18n="save">Сохранить</button>
-            <button id="validateScriptBtn">Validate</button>
+            <button id="validateScriptBtn" data-i18n="validate">Validate</button>
             <button id="debugScriptBtn" data-i18n="debug">Debug run</button>
+            <button id="executeScriptBtn" data-i18n="executeAdvanced">Execute advanced</button>
+            <button id="formatScriptBtn" data-i18n="formatScript">Format script</button>
+            <button id="fontIncreaseBtn" data-i18n="fontIncrease">A+</button>
+            <button id="fontDecreaseBtn" data-i18n="fontDecrease">A-</button>
+            <label class="checkbox-row"><input id="wordWrapInput" type="checkbox" checked/><span data-i18n="wordWrap">Word wrap</span></label>
         </div>
         <div class="form-grid">
             <label>Script ID <input id="scriptIdInput"/></label>
@@ -76,8 +88,15 @@
         </div>
         <h3 data-i18n="debugPayload">Payload для debug (JSON)</h3>
         <textarea id="debugPayloadInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <h3 data-i18n="debugContext">Контекст для debug/execute (JSON)</h3>
+        <textarea id="debugContextInput" class="payload-editor" spellcheck="false">{"source":"ui-debug","channel":"manual"}</textarea>
+        <div class="actions-row">
+            <button id="formatPayloadBtn" data-i18n="formatPayload">Format payload JSON</button>
+            <button id="formatContextBtn" data-i18n="formatContext">Format context JSON</button>
+        </div>
         <h3 data-i18n="debugResult">Результат отладки</h3>
         <pre id="debugResultView" class="mono"></pre>
+        <div class="editor-status mono" id="editorCursorInfo">Ln 1, Col 1</div>
     </section>
 
     <section class="panel">
@@ -109,6 +128,71 @@
         <label><span data-i18n="exportDefaults">Параметры по умолчанию (JSON key->value)</span></label>
         <textarea id="exportDefaultsInput" class="payload-editor" spellcheck="false">{}</textarea>
         <button id="exportTemplateBtn" data-i18n="exportArchive">Скачать ITS</button>
+    </section>
+
+    <section class="panel">
+        <h2 data-i18n="snapshotSection">Eventing snapshot import/export</h2>
+        <div class="actions-row">
+            <button id="snapshotExportBtn" data-i18n="snapshotExport">Export snapshot в JSON</button>
+            <label class="checkbox-row"><input id="snapshotClearBeforeImportInput" type="checkbox"/> <span data-i18n="snapshotClearBefore">clearBeforeImport</span></label>
+            <label class="checkbox-row"><input id="snapshotStrictInput" type="checkbox" checked/> <span data-i18n="snapshotStrict">strictPolicies</span></label>
+        </div>
+        <textarea id="snapshotPayloadInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <div class="actions-row">
+            <button id="snapshotValidateBtn" data-i18n="snapshotValidate">Validate</button>
+            <button id="snapshotPreviewBtn" data-i18n="snapshotPreview">Preview import</button>
+            <button id="snapshotAnalyzeBtn" data-i18n="snapshotAnalyze">Analyze import</button>
+            <button id="snapshotImportBtn" data-i18n="snapshotImport">Import snapshot</button>
+        </div>
+        <pre id="snapshotResultView" class="mono"></pre>
+    </section>
+
+    <section class="panel">
+        <h2 data-i18n="connectorsSection">Коннекторы внешних систем</h2>
+        <div class="actions-row">
+            <button id="loadConnectorsBtn" data-i18n="connectorsLoad">Загрузить каталог коннекторов</button>
+            <button id="loadBrokerTypesBtn" data-i18n="loadBrokerTypes">Загрузить поддерживаемые типы брокеров</button>
+        </div>
+        <pre id="connectorsCatalogView" class="mono"></pre>
+        <pre id="brokerTypesView" class="mono"></pre>
+
+        <h3 data-i18n="externalRestInvoke">Вызов внешнего REST</h3>
+        <div class="form-grid">
+            <label><span data-i18n="serviceId">Service ID</span> <input id="restServiceIdInput" placeholder="customer-crm"/></label>
+            <label><span data-i18n="httpMethod">HTTP method</span> <input id="restMethodInput" value="GET"/></label>
+            <label><span data-i18n="requestPath">Path</span> <input id="restPathInput" value="/"/></label>
+        </div>
+        <label><span data-i18n="headersJson">Headers JSON</span></label>
+        <textarea id="restHeadersInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <label><span data-i18n="bodyJson">Body JSON</span></label>
+        <textarea id="restBodyInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <button id="invokeRestBtn" data-i18n="invokeRest">Вызвать REST</button>
+
+        <h3 data-i18n="busPublish">Публикация в брокер/шину</h3>
+        <div class="form-grid">
+            <label><span data-i18n="brokerId">Broker ID</span> <input id="brokerIdInput" placeholder="customer-databus"/></label>
+            <label><span data-i18n="topic">Topic</span> <input id="brokerTopicInput" placeholder="customer.branch.events"/></label>
+            <label><span data-i18n="messageKey">Message key</span> <input id="brokerKeyInput"/></label>
+        </div>
+        <label><span data-i18n="headersJson">Headers JSON</span></label>
+        <textarea id="brokerHeadersInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <label><span data-i18n="payloadJson">Payload JSON</span></label>
+        <textarea id="brokerPayloadInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <button id="publishBusBtn" data-i18n="publishBus">Опубликовать</button>
+
+        <h3 data-i18n="inboundReaction">Проверка обработчиков входящего сообщения</h3>
+        <div class="form-grid">
+            <label><span data-i18n="brokerId">Broker ID</span> <input id="inboundBrokerIdInput" placeholder="customer-databus"/></label>
+            <label><span data-i18n="topic">Topic</span> <input id="inboundTopicInput" placeholder="customer.branch.events"/></label>
+            <label><span data-i18n="messageKey">Message key</span> <input id="inboundKeyInput"/></label>
+            <label><span data-i18n="scriptId">Script ID</span> <input id="inboundScriptIdInput" placeholder="optional"/></label>
+        </div>
+        <label><span data-i18n="headersJson">Headers JSON</span></label>
+        <textarea id="inboundHeadersInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <label><span data-i18n="payloadJson">Payload JSON</span></label>
+        <textarea id="inboundPayloadInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <button id="runInboundReactionBtn" data-i18n="runInboundReaction">Запустить inbound reaction</button>
+        <pre id="connectorsResultView" class="mono"></pre>
     </section>
 
     <section class="panel status-panel">
