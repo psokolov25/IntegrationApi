@@ -55,12 +55,27 @@
             <artifactId>micronaut-openapi-annotations</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.micronaut.openapi</groupId>
+            <artifactId>micronaut-openapi</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>io.micronaut.flyway</groupId>
             <artifactId>micronaut-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>2.4</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>2.0.32</version>
         </dependency>
 
         <dependency>
@@ -99,10 +114,17 @@
                             <artifactId>micronaut-validation-processor</artifactId>
                             <version>4.10.0</version>
                         </path>
+                        <path>
+                            <groupId>io.micronaut.openapi</groupId>
+                            <artifactId>micronaut-openapi</artifactId>
+                            <version>6.13.2</version>
+                        </path>
                     </annotationProcessorPaths>
                     <compilerArgs>
                         <arg>-Amicronaut.processing.group=ru.aritmos.integration</arg>
                         <arg>-Amicronaut.processing.module=integration-api</arg>
+                        <arg>-Amicronaut.openapi.target.file=target/generated-openapi/integration-api-openapi.yml</arg>
+                        <arg>-Amicronaut.openapi.property.naming.strategy=SNAKE_CASE</arg>
                     </compilerArgs>
                 </configuration>
             </plugin>

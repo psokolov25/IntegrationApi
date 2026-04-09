@@ -10,6 +10,11 @@ import io.micronaut.http.annotation.Put;
 import io.micronaut.http.annotation.QueryValue;
 import io.micronaut.validation.Validated;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -18,6 +23,7 @@ import ru.aritmos.integration.domain.BranchStateDto;
 import ru.aritmos.integration.domain.BranchStateUpdateRequest;
 import ru.aritmos.integration.domain.CallVisitorRequest;
 import ru.aritmos.integration.domain.CallVisitorResponse;
+import ru.aritmos.integration.domain.ErrorResponse;
 import ru.aritmos.integration.domain.QueueListResponse;
 import ru.aritmos.integration.domain.VisitManagerMetricDto;
 import ru.aritmos.integration.security.RequestSecurityContext;
@@ -51,8 +57,18 @@ public class GatewayController {
 
     @Get("/queues{?branchId,target}")
     @Operation(summary = "Получить очереди по филиалу", description = "Возвращает нормализованный список очередей, используя кеш и маршрутизацию.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Список очередей получен.",
+                    content = @Content(schema = @Schema(implementation = QueueListResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Субъект не аутентифицирован.",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Недостаточно прав queue-view.",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     public QueueListResponse getQueues(HttpRequest<?> request,
+                                       @Parameter(description = "Идентификатор отделения VisitManager.", required = true)
                                        @NotBlank @QueryValue String branchId,
+                                       @Parameter(description = "Явный target VisitManager. Если пусто, используется routing.")
                                        @QueryValue(defaultValue = "") String target) {
         SubjectPrincipal subject = subject(request);
         authorizationService.requirePermission(subject, "queue-view");
@@ -74,7 +90,16 @@ public class GatewayController {
 
     @Post("/visitors/{visitorId}/call{?target}")
     @Operation(summary = "Вызвать посетителя", description = "Проксирует команду вызова в соответствующий VisitManager с аудитом и инвалидацией кеша.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Посетитель вызван.",
+                    content = @Content(schema = @Schema(implementation = CallVisitorResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Некорректное тело команды вызова.",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Недостаточно прав queue-call.",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     public CallVisitorResponse callVisitor(HttpRequest<?> request,
+                                           @Parameter(description = "Идентификатор визита/посетителя.", required = true)
                                            @PathVariable String visitorId,
                                            @Valid @Body CallVisitorRequest body,
                                            @QueryValue(defaultValue = "") String target) {
@@ -85,6 +110,12 @@ public class GatewayController {
 
     @Get("/branches/{branchId}/state{?target}")
     @Operation(summary = "Получить состояние отделения", description = "Возвращает состояние отделения из кэша, при промахе запрашивает VisitManager.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Состояние отделения получено.",
+                    content = @Content(schema = @Schema(implementation = BranchStateDto.class))),
+            @ApiResponse(responseCode = "404", description = "Отделение не найдено.",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     public BranchStateDto branchState(HttpRequest<?> request,
                                       @PathVariable String branchId,
                                       @QueryValue(defaultValue = "") String target) {
@@ -105,6 +136,14 @@ public class GatewayController {
 
     @Put("/branches/{branchId}/state{?target}")
     @Operation(summary = "Обновить состояние отделения", description = "Проксирует обновление состояния отделения в VisitManager и актуализирует локальный кэш.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Состояние отделения обновлено.",
+                    content = @Content(schema = @Schema(implementation = BranchStateDto.class))),
+            @ApiResponse(responseCode = "400", description = "Ошибка валидации body.",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "Недостаточно прав branch-state-manage.",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
     public BranchStateDto updateBranchState(HttpRequest<?> request,
                                             @PathVariable String branchId,
                                             @Valid @Body BranchStateUpdateRequest body,

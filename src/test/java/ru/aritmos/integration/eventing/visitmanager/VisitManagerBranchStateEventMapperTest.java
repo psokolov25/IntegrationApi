@@ -1,16 +1,22 @@
 package ru.aritmos.integration.eventing.visitmanager;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 import ru.aritmos.integration.eventing.IntegrationEvent;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Map;
 
 class VisitManagerBranchStateEventMapperTest {
 
     private final VisitManagerBranchStateEventMapper mapper = new VisitManagerBranchStateEventMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
     void shouldMapVisitManagerDatabusV1Payload() {
@@ -157,5 +163,30 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals("BR-777", payload.branchId());
         Assertions.assertEquals("PAUSED", payload.status());
         Assertions.assertEquals("groovy-rule", payload.updatedBy());
+    }
+
+    @Test
+    void shouldMapEntityChangedBranchFromExamplesSnapshotPayload() throws IOException {
+        Path examplesPayloadPath = Path.of("examples", "message-body-18613411-29e1-4dc9-afe4-ba37ab7e5e04.json");
+        Map<String, Object> payload = objectMapper.readValue(
+                Files.readString(examplesPayloadPath),
+                new TypeReference<>() {
+                }
+        );
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-6",
+                "ENTITY_CHANGED",
+                "vm-examples",
+                Instant.parse("2026-04-08T13:30:00Z"),
+                payload
+        );
+
+        Assertions.assertTrue(mapper.isBranchEntityChanged(event));
+        VisitManagerBranchStateEventPayload mapped = mapper.mapEntityChangedBranch(event);
+        Assertions.assertEquals("vm-examples", mapped.sourceVisitManagerId());
+        Assertions.assertEquals("cd842979-3dc1-4505-a1ae-9a92f0622da2", mapped.branchId());
+        Assertions.assertEquals("UNKNOWN", mapped.status());
+        Assertions.assertEquals("11:24:00", mapped.activeWindow());
+        Assertions.assertEquals(1, mapped.queueSize());
     }
 }

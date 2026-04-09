@@ -37,6 +37,67 @@ class EventDispatcherServiceTest {
     }
 
     @Test
+    void shouldMarkOutboxAsDeadAfterMaxAttempts() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().setEnabled(true);
+        cfg.getEventing().setMaxRetries(0);
+        cfg.getEventing().setOutboxMaxAttempts(1);
+        cfg.getEventing().setOutboxBackoffSeconds(1);
+
+        EventDispatcherService dispatcher = new EventDispatcherService(
+                cfg,
+                new EventInboxService(),
+                new EventRetryService(),
+                new EventStoreService(),
+                new EventOutboxService(),
+                event -> {
+                    throw new IllegalStateException("transport down");
+                },
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+
+        EventProcessingResult result = dispatcher.process(new IntegrationEvent("dead-1", "visit-created", "databus", Instant.now(), Map.of()));
+        Assertions.assertEquals("OUTBOX_PENDING", result.status());
+
+        dispatcher.flushOutbox(10);
+        EventOutboxMessage outboxMessage = dispatcher.outboxById("dead-1");
+        Assertions.assertNotNull(outboxMessage);
+        Assertions.assertEquals("DEAD", outboxMessage.status());
+        Assertions.assertTrue(dispatcher.stats().outboxDeadSize() >= 1);
+    }
+
+    @Test
+    void shouldRecoverStaleInboxProcessing() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().setEnabled(true);
+        cfg.getEventing().setInboxProcessingTimeoutSeconds(1);
+
+        EventInboxService inbox = new EventInboxService();
+        inbox.beginProcessing("stale-1");
+        inbox.markFailed("stale-1", "forced");
+        inbox.beginProcessing("stale-1");
+
+        EventDispatcherService dispatcher = new EventDispatcherService(
+                cfg,
+                inbox,
+                new EventRetryService(),
+                new EventStoreService(),
+                event -> {
+                },
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+
+        // эмуляция staleness через ручную паузу
+        try {
+            Thread.sleep(1100);
+        } catch (InterruptedException ignored) {
+        }
+
+        int recovered = dispatcher.recoverStaleInboxProcessing();
+        Assertions.assertTrue(recovered >= 1);
+    }
+
+    @Test
     void shouldSendToDlqWhenNoHandler() {
         IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
         cfg.getEventing().setEnabled(true);
@@ -331,6 +392,7 @@ class EventDispatcherServiceTest {
                         "b", new IntegrationEvent("b", "visit-created", "databus", Instant.now(), Map.of())
                 ),
                 List.of(),
+                Map.of(),
                 dispatcher.stats()
         );
 
@@ -351,7 +413,7 @@ class EventDispatcherServiceTest {
                 List.of(new DefaultVisitCreatedEventHandler())
         );
 
-        EventingSnapshot snapshot = new EventingSnapshot(Map.of(), List.of(), dispatcher.stats());
+        EventingSnapshot snapshot = new EventingSnapshot(Map.of(), List.of(), Map.of(), dispatcher.stats());
         EventingImportResult preview = dispatcher.previewImport(snapshot);
 
         Assertions.assertEquals(0, preview.importedProcessed());
@@ -377,6 +439,7 @@ class EventDispatcherServiceTest {
         EventingSnapshot snapshot = new EventingSnapshot(
                 Map.of("key-1", new IntegrationEvent("another-id", "visit-created", "databus", Instant.now(), Map.of())),
                 List.of(),
+                Map.of(),
                 dispatcher.stats()
         );
 
@@ -403,6 +466,7 @@ class EventDispatcherServiceTest {
         EventingSnapshot snapshot = new EventingSnapshot(
                 Map.of("dup-1", event),
                 List.of(event),
+                Map.of(),
                 dispatcher.stats()
         );
 
@@ -429,6 +493,7 @@ class EventDispatcherServiceTest {
         EventingSnapshot snapshot = new EventingSnapshot(
                 Map.of("new-1", new IntegrationEvent("new-1", "visit-created", "databus", Instant.now(), Map.of())),
                 List.of(new IntegrationEvent("dlq-1", "visit-created", "databus", Instant.now(), Map.of())),
+                Map.of(),
                 dispatcher.stats()
         );
         EventingImportResult preview = dispatcher.previewImport(snapshot, true);
@@ -474,7 +539,7 @@ class EventDispatcherServiceTest {
         );
 
         IntegrationEvent event = new IntegrationEvent("dup-2", "visit-created", "databus", Instant.now(), Map.of());
-        EventingSnapshot snapshot = new EventingSnapshot(Map.of("another-key", event), List.of(event), dispatcher.stats());
+        EventingSnapshot snapshot = new EventingSnapshot(Map.of("another-key", event), List.of(event), Map.of(), dispatcher.stats());
 
         EventingSnapshotValidation strict = dispatcher.validateSnapshot(snapshot, true);
         EventingSnapshotValidation lenient = dispatcher.validateSnapshot(snapshot, false);
@@ -504,6 +569,7 @@ class EventDispatcherServiceTest {
         EventingSnapshot snapshot = new EventingSnapshot(
                 Map.of("p-1", new IntegrationEvent("p-1", "visit-created", "databus", Instant.now(), Map.of())),
                 List.of(new IntegrationEvent("d-1", "visit-created", "databus", Instant.now(), Map.of())),
+                Map.of(),
                 dispatcher.stats()
         );
 
@@ -512,5 +578,74 @@ class EventDispatcherServiceTest {
         Assertions.assertTrue(analysis.projectedProcessedOverflow());
         Assertions.assertFalse(analysis.projectedDlqOverflow());
         Assertions.assertEquals(100, analysis.limitUsagePercent());
+    }
+
+    @Test
+    void shouldKeepEventInOutboxWhenTransportFailsAndFlushLater() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().setEnabled(true);
+        cfg.getEventing().setMaxRetries(0);
+
+        EventTransportAdapter failingTransport = new EventTransportAdapter() {
+            @Override
+            public void publish(IntegrationEvent event) {
+                throw new IllegalStateException("transport unavailable");
+            }
+        };
+        EventDispatcherService failingDispatcher = new EventDispatcherService(
+                cfg,
+                new EventInboxService(),
+                new EventRetryService(),
+                new EventStoreService(),
+                new EventOutboxService(),
+                failingTransport,
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+
+        EventProcessingResult processed = failingDispatcher.process(
+                new IntegrationEvent("outbox-1", "visit-created", "databus", Instant.now(), Map.of())
+        );
+
+        Assertions.assertEquals("OUTBOX_PENDING", processed.status());
+        Assertions.assertEquals(1, failingDispatcher.stats().outboxPendingSize());
+
+        EventDispatcherService healthyDispatcher = new EventDispatcherService(
+                cfg,
+                new EventInboxService(),
+                new EventRetryService(),
+                new EventStoreService(),
+                new EventOutboxService(),
+                event -> {
+                },
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+        healthyDispatcher.importSnapshot(failingDispatcher.exportSnapshot(), true);
+        List<EventProcessingResult> flushResults = healthyDispatcher.flushOutbox(10);
+        Assertions.assertTrue(flushResults.isEmpty());
+
+        EventOutboxMessage failedMessage = healthyDispatcher.outboxById("outbox-1");
+        Assertions.assertNotNull(failedMessage);
+        EventOutboxMessage dueMessage = new EventOutboxMessage(
+                failedMessage.eventId(),
+                failedMessage.event(),
+                failedMessage.status(),
+                failedMessage.attempts(),
+                failedMessage.lastError(),
+                Instant.now().minusSeconds(1),
+                failedMessage.updatedAt()
+        );
+        EventingSnapshot currentSnapshot = healthyDispatcher.exportSnapshot();
+        EventingSnapshot requeueSnapshot = new EventingSnapshot(
+                currentSnapshot.processed(),
+                currentSnapshot.dlq(),
+                Map.of(dueMessage.eventId(), dueMessage),
+                healthyDispatcher.stats()
+        );
+        healthyDispatcher.importSnapshot(requeueSnapshot, true);
+        flushResults = healthyDispatcher.flushOutbox(10);
+
+        Assertions.assertFalse(flushResults.isEmpty());
+        Assertions.assertEquals("OUTBOX_SENT", flushResults.get(0).status());
+        Assertions.assertEquals(0, healthyDispatcher.stats().outboxPendingSize());
     }
 }

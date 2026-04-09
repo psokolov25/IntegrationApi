@@ -1,6 +1,17 @@
 micronaut:
   application:
     name: integration-api
+  router:
+    static-resources:
+      swagger:
+        paths: classpath:META-INF/swagger
+        mapping: /swagger/**
+      swagger-ui:
+        paths: classpath:META-INF/swagger/views/swagger-ui
+        mapping: /swagger-ui/**
+      integration-ui:
+        paths: classpath:ui
+        mapping: /ui/**
 
 integration:
   security-mode: API_KEY
@@ -25,7 +36,10 @@ integration:
         port: 6379
         database: 0
         password: ""
-        key-prefix: integration:groovy:script:
+        key-prefix: "integration:groovy:script:"
+      file:
+        enabled: true
+        path: cache/program-scripts
     external-rest-services:
       - id: customer-crm
         base-url: http://localhost:8090
@@ -54,6 +68,11 @@ integration:
     circuit-open-seconds: 10
   eventing:
     enabled: true
+    state-persistence-enabled: true
+    state-persistence-path: cache/eventing-state/snapshot.json
+    outbox-backoff-seconds: 5
+    outbox-max-attempts: 20
+    inbox-processing-timeout-seconds: 120
     max-retries: 2
     max-payload-fields: 100
     max-future-skew-seconds: 300
@@ -72,12 +91,12 @@ integration:
     entity-changed-branch-mapping:
       enabled: true
       event-type: ENTITY_CHANGED
-      class-name-paths: ["class", "entityClass", "data.class", "data.entityClass", "data.entity.class", "meta.class", "meta.entityClass"]
+      class-name-paths: ["className", "class", "entityClass", "data.class", "data.entityClass", "data.entity.class", "meta.class", "meta.entityClass"]
       accepted-class-names: ["Branch"]
-      branch-id-paths: ["data.branch.id", "data.branchId", "data.branch_id", "data.entity.id", "data.entity.branchId", "branch.id", "branchId", "branch_id"]
-      status-paths: ["data.state.status", "data.state.code", "data.status", "data.entity.state.status", "data.entity.status", "status", "state"]
-      active-window-paths: ["data.state.activeWindow", "data.state.active_window", "data.activeWindow", "data.entity.state.activeWindow", "data.entity.activeWindow", "activeWindow", "active_window"]
-      queue-size-paths: ["data.state.queueSize", "data.queueSize", "data.entity.state.queueSize", "data.entity.queueSize", "queueSize", "queue_size"]
+      branch-id-paths: ["newValue.id", "oldValue.id", "data.branch.id", "data.branchId", "data.branch_id", "data.entity.id", "data.entity.branchId", "branch.id", "branchId", "branch_id"]
+      status-paths: ["newValue.status", "oldValue.status", "data.state.status", "data.state.code", "data.status", "data.entity.state.status", "data.entity.status", "status", "state"]
+      active-window-paths: ["newValue.activeWindow", "newValue.resetTime", "oldValue.activeWindow", "oldValue.resetTime", "data.state.activeWindow", "data.state.active_window", "data.activeWindow", "data.entity.state.activeWindow", "data.entity.activeWindow", "activeWindow", "active_window"]
+      queue-size-paths: ["newValue.queueSize", "oldValue.queueSize", "data.state.queueSize", "data.queueSize", "data.entity.state.queueSize", "data.entity.queueSize", "queueSize", "queue_size"]
       updated-at-paths: ["data.state.updatedAt", "data.updatedAt", "data.entity.state.updatedAt", "data.entity.updatedAt", "updatedAt", "updated_at"]
       updated-by-paths: ["data.state.updatedBy", "data.updatedBy", "data.entity.state.updatedBy", "data.entity.updatedBy", "updatedBy", "updated_by"]
       visit-manager-id-paths: ["meta.visitManagerId", "metadata.visitManagerId", "data.visitManagerId", "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"]

@@ -141,9 +141,19 @@ public class VisitManagerBranchStateEventMapper {
         if (sourceVisitManagerId == null || sourceVisitManagerId.isBlank()) {
             throw new IllegalArgumentException("visitManagerId обязателен (в payload или source события)");
         }
-        String status = required(payload, safePaths(mapping.getStatusPaths()));
-        String activeWindow = required(payload, safePaths(mapping.getActiveWindowPaths()));
-        int queueSize = parseQueueSize(first(payload, safePaths(mapping.getQueueSizePaths())));
+        String status = withFallback(
+                asString(first(payload, safePaths(mapping.getStatusPaths()))),
+                inferStatus(payload),
+                "UNKNOWN"
+        );
+        String activeWindow = withFallback(
+                asString(first(payload, safePaths(mapping.getActiveWindowPaths()))),
+                "UNSPECIFIED"
+        );
+        int queueSize = parseQueueSizeWithFallback(
+                first(payload, safePaths(mapping.getQueueSizePaths())),
+                inferQueueSizeFromBranchSnapshot(payload)
+        );
         Instant updatedAt = parseUpdatedAt(first(payload, safePaths(mapping.getUpdatedAtPaths())), event.occurredAt());
         String updatedBy = asString(first(payload, safePaths(mapping.getUpdatedByPaths())));
         if (updatedBy == null || updatedBy.isBlank()) {
@@ -209,6 +219,15 @@ public class VisitManagerBranchStateEventMapper {
         return value == null ? null : String.valueOf(value);
     }
 
+    private String withFallback(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private String normalizedClassName(Object value) {
         String className = asString(value);
         if (className == null || className.isBlank()) {
@@ -233,6 +252,51 @@ public class VisitManagerBranchStateEventMapper {
         } catch (NumberFormatException ex) {
             throw new IllegalArgumentException("payload.queueSize должен быть целым числом");
         }
+    }
+
+    private int parseQueueSizeWithFallback(Object primary, Integer fallback) {
+        if (primary != null) {
+            return parseQueueSize(primary);
+        }
+        if (fallback != null) {
+            return Math.max(fallback, 0);
+        }
+        return 0;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Integer inferQueueSizeFromBranchSnapshot(Map<String, Object> payload) {
+        Object newValue = payload.get("newValue");
+        if (!(newValue instanceof Map<?, ?> branchSnapshot)) {
+            return null;
+        }
+        Object servicePointsRaw = ((Map<String, Object>) branchSnapshot).get("servicePoints");
+        if (!(servicePointsRaw instanceof Map<?, ?> servicePoints)) {
+            return null;
+        }
+        int total = 0;
+        for (Object servicePointRaw : servicePoints.values()) {
+            if (!(servicePointRaw instanceof Map<?, ?> servicePoint)) {
+                continue;
+            }
+            Object visitsRaw = ((Map<String, Object>) servicePoint).get("visits");
+            if (visitsRaw instanceof java.util.Collection<?> visits) {
+                total += visits.size();
+            }
+        }
+        return total;
+    }
+
+    private String inferStatus(Map<String, Object> payload) {
+        String action = asString(payload.get("action"));
+        if (action == null || action.isBlank()) {
+            return null;
+        }
+        String normalized = action.trim().toUpperCase();
+        if (normalized.contains("DELETE") || normalized.contains("CLOSE")) {
+            return "CLOSED";
+        }
+        return null;
     }
 
     private Instant parseUpdatedAt(Object value, Instant fallback) {

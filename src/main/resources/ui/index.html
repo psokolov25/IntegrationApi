@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Integration API Console</title>
+    <link rel="stylesheet" href="/ui/app.css"/>
+</head>
+<body>
+<header class="topbar">
+    <div class="brand-box">
+        <h1 data-i18n="title">IntegrationAPI: корпоративная панель управления</h1>
+        <p data-i18n="subtitle">Дашборд, контрольная панель и редактор программируемых обработчиков</p>
+    </div>
+    <div class="auth-box">
+        <label for="languageSelect">LANG:</label>
+        <select id="languageSelect"></select>
+        <label for="apiKeyInput" data-i18n="apikey">X-API-KEY</label>
+        <input id="apiKeyInput" placeholder="dev-api-key"/>
+        <button id="saveApiKeyBtn" data-i18n="save">Сохранить</button>
+    </div>
+</header>
+
+<main class="layout">
+    <section class="panel">
+        <h2 data-i18n="dashboard">Дашборд eventing</h2>
+        <div class="cards" id="statsCards"></div>
+        <div class="actions-row">
+            <button id="refreshStatsBtn" data-i18n="refresh">Обновить статистику</button>
+            <button id="flushOutboxBtn" data-i18n="flush">Flush outbox</button>
+            <button id="recoverInboxBtn">Recover stale inbox</button>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2 data-i18n="control">Контрольная панель</h2>
+        <div class="split">
+            <div>
+                <h3>DLQ (top 20)</h3>
+                <pre id="dlqView" class="mono"></pre>
+            </div>
+            <div>
+                <h3>Outbox (top 20)</h3>
+                <pre id="outboxView" class="mono"></pre>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel">
+        <h2 data-i18n="groovyEditor">Редактор Groovy-обработчиков</h2>
+        <div class="editor-toolbar">
+            <select id="scriptsSelect"></select>
+            <button id="loadScriptBtn" data-i18n="load">Загрузить</button>
+            <button id="newScriptBtn" data-i18n="new">Новый</button>
+            <button id="saveScriptBtn" data-i18n="save">Сохранить</button>
+            <button id="validateScriptBtn">Validate</button>
+            <button id="debugScriptBtn" data-i18n="debug">Debug run</button>
+        </div>
+        <div class="form-grid">
+            <label>Script ID <input id="scriptIdInput"/></label>
+            <label>Тип
+                <select id="scriptTypeInput">
+                    <option value="BRANCH_CACHE_QUERY">BRANCH_CACHE_QUERY</option>
+                    <option value="VISIT_MANAGER_ACTION">VISIT_MANAGER_ACTION</option>
+                    <option value="MESSAGE_BUS_REACTION">MESSAGE_BUS_REACTION</option>
+                </select>
+            </label>
+            <label><span data-i18n="description">Описание</span> <input id="scriptDescriptionInput"/></label>
+        </div>
+        <textarea id="scriptBodyInput" class="script-editor" spellcheck="false"></textarea>
+        <h3 data-i18n="execParamsTitle">Параметры выполнения (auto по {{...}} + ручное заполнение)</h3>
+        <div id="executionParamsGrid" class="params-grid"></div>
+        <div class="actions-row">
+            <button id="refreshExecutionParamsBtn" data-i18n="execParamsRefresh">Обновить параметры из скрипта</button>
+            <button id="addExecutionParamBtn" data-i18n="execParamsAdd">Добавить параметр</button>
+        </div>
+        <h3 data-i18n="debugPayload">Payload для debug (JSON)</h3>
+        <textarea id="debugPayloadInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <h3 data-i18n="debugResult">Результат отладки</h3>
+        <pre id="debugResultView" class="mono"></pre>
+    </section>
+
+    <section class="panel">
+        <h2 data-i18n="templates">Integration templates (.its)</h2>
+        <h3 data-i18n="templatePreview">1) Предпросмотр импорта</h3>
+        <div class="actions-row">
+            <label class="file-input-label"><span data-i18n="chooseArchive">Выберите ITS-архив</span>
+                <input id="templateFileInput" type="file" accept=".its,.zip"/>
+            </label>
+            <button id="previewTemplateBtn" data-i18n="previewArchive">Предпросмотр</button>
+        </div>
+        <pre id="templateMetaView" class="mono"></pre>
+
+        <h3 data-i18n="templateImport">2) Импорт с подстановкой параметров</h3>
+        <div id="templateParametersGrid" class="params-grid"></div>
+        <label class="checkbox-row">
+            <input id="replaceExistingInput" type="checkbox"/>
+            <span data-i18n="replaceExisting">Перезаписывать существующие scriptId</span>
+        </label>
+        <button id="importTemplateBtn" data-i18n="importArchive">Импортировать</button>
+
+        <h3 data-i18n="templateExport">3) Экспорт текущих обработчиков</h3>
+        <div class="form-grid">
+            <label><span data-i18n="exportTemplateId">Template ID</span> <input id="exportTemplateIdInput" value="integration-template"/></label>
+            <label><span data-i18n="exportTemplateName">Название</span> <input id="exportTemplateNameInput" value="Integration Template Export"/></label>
+            <label><span data-i18n="exportTemplateDescription">Описание</span> <input id="exportTemplateDescriptionInput" value="Экспорт обработчиков Integration API"/></label>
+        </div>
+        <div id="scriptsChecklist" class="scripts-checklist"></div>
+        <label><span data-i18n="exportDefaults">Параметры по умолчанию (JSON key->value)</span></label>
+        <textarea id="exportDefaultsInput" class="payload-editor" spellcheck="false">{}</textarea>
+        <button id="exportTemplateBtn" data-i18n="exportArchive">Скачать ITS</button>
+    </section>
+
+    <section class="panel status-panel">
+        <strong>STATUS:</strong> <span id="uiStatus" data-i18n="statusReady">Готово</span>
+    </section>
+</main>
+
+<script src="/ui/app.js"></script>
+</body>
+</html>

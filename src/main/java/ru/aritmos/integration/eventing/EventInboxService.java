@@ -2,6 +2,8 @@ package ru.aritmos.integration.eventing;
 
 import jakarta.inject.Singleton;
 
+import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -11,28 +13,113 @@ import java.util.concurrent.ConcurrentHashMap;
 @Singleton
 public class EventInboxService {
 
-    private final Set<String> processedIds = ConcurrentHashMap.newKeySet();
+    private final Map<String, InboxEntry> entries = new ConcurrentHashMap<>();
+
+    public InboxState beginProcessing(String eventId) {
+        if (eventId == null || eventId.isBlank()) {
+            return InboxState.INVALID;
+        }
+        Instant now = Instant.now();
+        InboxEntry updated = entries.compute(eventId, (id, current) -> {
+            if (current == null) {
+                return new InboxEntry(id, now, now, 1, "PROCESSING", null);
+            }
+            if ("PROCESSING".equals(current.status())) {
+                return current;
+            }
+            if ("PROCESSED".equals(current.status())) {
+                return current;
+            }
+            return new InboxEntry(id, current.firstSeenAt(), now, current.attempts() + 1, "PROCESSING", null);
+        });
+        if ("PROCESSING".equals(updated.status()) && updated.attempts() == 1) {
+            return InboxState.FIRST;
+        }
+        if ("PROCESSING".equals(updated.status())) {
+            return InboxState.IN_PROGRESS;
+        }
+        return InboxState.DUPLICATE;
+    }
 
     public boolean markIfFirst(String eventId) {
-        return processedIds.add(eventId);
+        return beginProcessing(eventId) == InboxState.FIRST;
+    }
+
+    public void markProcessed(String eventId) {
+        InboxEntry current = entries.get(eventId);
+        if (current == null) {
+            return;
+        }
+        entries.put(eventId, new InboxEntry(
+                eventId,
+                current.firstSeenAt(),
+                Instant.now(),
+                current.attempts(),
+                "PROCESSED",
+                null
+        ));
+    }
+
+    public void markFailed(String eventId, String error) {
+        InboxEntry current = entries.get(eventId);
+        Instant now = Instant.now();
+        if (current == null) {
+            entries.put(eventId, new InboxEntry(eventId, now, now, 1, "FAILED", error));
+            return;
+        }
+        entries.put(eventId, new InboxEntry(
+                eventId,
+                current.firstSeenAt(),
+                now,
+                current.attempts(),
+                "FAILED",
+                error
+        ));
     }
 
     public boolean contains(String eventId) {
-        return processedIds.contains(eventId);
+        return entries.containsKey(eventId);
     }
 
     public int size() {
-        return processedIds.size();
+        return entries.size();
+    }
+
+    public int processingSize() {
+        return (int) entries.values().stream().filter(item -> "PROCESSING".equals(item.status())).count();
+    }
+
+    public int recoverStaleProcessing(long timeoutSeconds) {
+        if (timeoutSeconds <= 0) {
+            return 0;
+        }
+        Instant deadline = Instant.now().minusSeconds(timeoutSeconds);
+        int recovered = 0;
+        for (Map.Entry<String, InboxEntry> entry : entries.entrySet()) {
+            InboxEntry current = entry.getValue();
+            if ("PROCESSING".equals(current.status()) && current.updatedAt().isBefore(deadline)) {
+                entries.put(entry.getKey(), new InboxEntry(
+                        current.eventId(),
+                        current.firstSeenAt(),
+                        Instant.now(),
+                        current.attempts(),
+                        "FAILED",
+                        "Stale processing timeout exceeded"
+                ));
+                recovered++;
+            }
+        }
+        return recovered;
     }
 
     public void clear() {
-        processedIds.clear();
+        entries.clear();
     }
 
     public int removeAll(Set<String> eventIds) {
         int removed = 0;
         for (String eventId : eventIds) {
-            if (processedIds.remove(eventId)) {
+            if (entries.remove(eventId) != null) {
                 removed++;
             }
         }
@@ -45,10 +132,34 @@ public class EventInboxService {
         }
         int added = 0;
         for (String eventId : eventIds) {
-            if (eventId != null && processedIds.add(eventId)) {
+            if (eventId != null && entries.putIfAbsent(eventId, new InboxEntry(
+                    eventId,
+                    Instant.now(),
+                    Instant.now(),
+                    1,
+                    "PROCESSED",
+                    null
+            )) == null) {
                 added++;
             }
         }
         return added;
+    }
+
+    public enum InboxState {
+        FIRST,
+        DUPLICATE,
+        IN_PROGRESS,
+        INVALID
+    }
+
+    public record InboxEntry(
+            String eventId,
+            Instant firstSeenAt,
+            Instant updatedAt,
+            int attempts,
+            String status,
+            String lastError
+    ) {
     }
 }

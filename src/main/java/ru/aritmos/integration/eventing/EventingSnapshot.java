@@ -12,6 +12,7 @@ import java.util.Map;
 public record EventingSnapshot(
         Map<String, IntegrationEvent> processed,
         List<IntegrationEvent> dlq,
+        Map<String, EventOutboxMessage> outbox,
         EventingStats stats
 ) {
 }

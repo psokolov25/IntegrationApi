@@ -12,7 +12,12 @@ public record EventingStats(
         long dlqCount,
         long replayCount,
         int inboxSize,
+        int inboxInProgressSize,
         int processedStoreSize,
-        int dlqSize
+        int dlqSize,
+        int outboxSize,
+        int outboxPendingSize,
+        int outboxFailedSize,
+        int outboxDeadSize
 ) {
 }

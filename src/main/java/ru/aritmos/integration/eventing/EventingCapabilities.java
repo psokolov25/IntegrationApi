@@ -12,6 +12,7 @@ public record EventingCapabilities(
         boolean dlqOperations,
         boolean maintenance,
         boolean snapshotExportImport,
-        boolean healthChecks
+        boolean healthChecks,
+        boolean outboxReliability
 ) {
 }
