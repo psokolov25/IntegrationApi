@@ -494,6 +494,37 @@ public class IntegrationGatewayConfiguration {
                 "targetVisitManagerId",
                 "target_visit_manager_id"
         );
+        /**
+         * Ключи «оберток», через которые разрешено рекурсивно продолжать path-резолвинг.
+         */
+        private List<String> wrapperKeys = List.of(
+                "data", "payload", "entity", "entities", "event", "message", "content", "body",
+                "detail", "item", "items", "result", "snapshot", "newValue", "oldValue", "branch"
+        );
+        /**
+         * Корневые пути branch-snapshot для fallback-расчета queueSize.
+         */
+        private List<String> queueSnapshotRoots = List.of(
+                "newValue", "data.entity", "data.branch", "data", "oldValue"
+        );
+        /**
+         * Варианты ключей контейнера service points.
+         */
+        private List<String> servicePointsKeys = List.of(
+                "servicePoints", "service_points", "windows", "serviceWindows"
+        );
+        /**
+         * Варианты ключей контейнера очередей.
+         */
+        private List<String> queuesKeys = List.of(
+                "queues", "queueMap", "queue_map"
+        );
+        /**
+         * Варианты ключей коллекций визитов.
+         */
+        private List<String> visitsKeys = List.of(
+                "visits", "visitList", "visit_list"
+        );
 
         public boolean isEnabled() {
             return enabled;
@@ -581,6 +612,46 @@ public class IntegrationGatewayConfiguration {
 
         public void setVisitManagerIdPaths(List<String> visitManagerIdPaths) {
             this.visitManagerIdPaths = visitManagerIdPaths;
+        }
+
+        public List<String> getWrapperKeys() {
+            return wrapperKeys;
+        }
+
+        public void setWrapperKeys(List<String> wrapperKeys) {
+            this.wrapperKeys = wrapperKeys;
+        }
+
+        public List<String> getQueueSnapshotRoots() {
+            return queueSnapshotRoots;
+        }
+
+        public void setQueueSnapshotRoots(List<String> queueSnapshotRoots) {
+            this.queueSnapshotRoots = queueSnapshotRoots;
+        }
+
+        public List<String> getServicePointsKeys() {
+            return servicePointsKeys;
+        }
+
+        public void setServicePointsKeys(List<String> servicePointsKeys) {
+            this.servicePointsKeys = servicePointsKeys;
+        }
+
+        public List<String> getQueuesKeys() {
+            return queuesKeys;
+        }
+
+        public void setQueuesKeys(List<String> queuesKeys) {
+            this.queuesKeys = queuesKeys;
+        }
+
+        public List<String> getVisitsKeys() {
+            return visitsKeys;
+        }
+
+        public void setVisitsKeys(List<String> visitsKeys) {
+            this.visitsKeys = visitsKeys;
         }
     }
 

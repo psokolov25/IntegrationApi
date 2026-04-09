@@ -5,7 +5,11 @@ import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 import ru.aritmos.integration.eventing.IntegrationEvent;
 
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -199,20 +203,17 @@ public class VisitManagerBranchStateEventMapper {
 
     @SuppressWarnings("unchecked")
     private Object byPath(Map<String, Object> payload, String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
         if (!path.contains(".")) {
-            return payload.get(path);
-        }
-        Object current = payload;
-        for (String part : path.split("\\.")) {
-            if (!(current instanceof Map<?, ?> map)) {
-                return null;
+            Object direct = findByNormalizedKey(payload, path);
+            if (direct != null) {
+                return direct;
             }
-            current = ((Map<String, Object>) map).get(part);
-            if (current == null) {
-                return null;
-            }
+            return findPathValue(payload, List.of(path), 0);
         }
-        return current;
+        return findPathValue(payload, List.of(path.split("\\.")), 0);
     }
 
     private String asString(Object value) {
@@ -266,25 +267,61 @@ public class VisitManagerBranchStateEventMapper {
 
     @SuppressWarnings("unchecked")
     private Integer inferQueueSizeFromBranchSnapshot(Map<String, Object> payload) {
-        Object newValue = payload.get("newValue");
-        if (!(newValue instanceof Map<?, ?> branchSnapshot)) {
-            return null;
-        }
-        Object servicePointsRaw = ((Map<String, Object>) branchSnapshot).get("servicePoints");
-        if (!(servicePointsRaw instanceof Map<?, ?> servicePoints)) {
-            return null;
-        }
-        int total = 0;
-        for (Object servicePointRaw : servicePoints.values()) {
-            if (!(servicePointRaw instanceof Map<?, ?> servicePoint)) {
-                continue;
-            }
-            Object visitsRaw = ((Map<String, Object>) servicePoint).get("visits");
-            if (visitsRaw instanceof java.util.Collection<?> visits) {
-                total += visits.size();
+        IntegrationGatewayConfiguration.EntityChangedBranchMappingSettings mapping =
+                configuration.getEventing().getEntityChangedBranchMapping();
+        for (String root : safeList(mapping.getQueueSnapshotRoots(),
+                List.of("newValue", "data.entity", "data.branch", "data", "oldValue"))) {
+            Object snapshot = byPath(payload, root);
+            Integer inferred = inferQueueSizeFromSnapshotNode(snapshot, mapping);
+            if (inferred != null) {
+                return inferred;
             }
         }
-        return total;
+        return null;
+    }
+
+    private Integer inferQueueSizeFromSnapshotNode(
+            Object snapshotNode,
+            IntegrationGatewayConfiguration.EntityChangedBranchMappingSettings mapping
+    ) {
+        if (!(snapshotNode instanceof Map<?, ?> snapshot)) {
+            return null;
+        }
+        Object servicePointsRaw = firstByKeys(snapshot,
+                safeList(mapping.getServicePointsKeys(),
+                        List.of("servicePoints", "service_points", "windows", "serviceWindows")));
+        Integer fromServicePoints = sumVisitsInContainer(servicePointsRaw);
+        if (fromServicePoints != null) {
+            return fromServicePoints;
+        }
+        Object queuesRaw = firstByKeys(snapshot,
+                safeList(mapping.getQueuesKeys(), List.of("queues", "queueMap", "queue_map")));
+        Integer fromQueues = sumVisitsInContainer(queuesRaw);
+        if (fromQueues != null) {
+            return fromQueues;
+        }
+        if (hasAnyKey(snapshot, safeList(mapping.getVisitsKeys(), List.of("visits", "visitList", "visit_list")))) {
+            return countVisits(snapshot, mapping);
+        }
+        return null;
+    }
+
+    private int countVisits(
+            Object servicePointRaw,
+            IntegrationGatewayConfiguration.EntityChangedBranchMappingSettings mapping
+    ) {
+        if (!(servicePointRaw instanceof Map<?, ?> servicePoint)) {
+            return 0;
+        }
+        Object visitsRaw = firstByKeys(servicePoint,
+                safeList(mapping.getVisitsKeys(), List.of("visits", "visitList", "visit_list")));
+        if (visitsRaw instanceof java.util.Collection<?> visits) {
+            return visits.size();
+        }
+        if (visitsRaw instanceof Map<?, ?> visits) {
+            return visits.size();
+        }
+        return 0;
     }
 
     private String inferStatus(Map<String, Object> payload) {
@@ -303,10 +340,172 @@ public class VisitManagerBranchStateEventMapper {
         if (value == null) {
             return fallback == null ? Instant.now() : fallback;
         }
+        String text = String.valueOf(value);
         try {
-            return Instant.parse(String.valueOf(value));
+            return Instant.parse(text);
+        } catch (DateTimeParseException ignored) {
+            // try other common representations from external systems
+        }
+        try {
+            return OffsetDateTime.parse(text).toInstant();
+        } catch (DateTimeParseException ignored) {
+            // continue
+        }
+        try {
+            return ZonedDateTime.parse(text).toInstant();
         } catch (DateTimeParseException ex) {
             throw new IllegalArgumentException("payload.updatedAt должен быть в ISO-8601");
         }
+    }
+
+    private Object findPathValue(Object current, List<String> parts, int partIdx) {
+        if (current == null) {
+            return null;
+        }
+        if (partIdx >= parts.size()) {
+            return current;
+        }
+        String part = parts.get(partIdx);
+        if (current instanceof Map<?, ?> map) {
+            if ("*".equals(part)) {
+                for (Object value : map.values()) {
+                    Object wildcardNested = findPathValue(value, parts, partIdx + 1);
+                    if (wildcardNested != null) {
+                        return wildcardNested;
+                    }
+                }
+                return null;
+            }
+            Object next = findByNormalizedKey(map, part);
+            if (next != null) {
+                return findPathValue(next, parts, partIdx + 1);
+            }
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (!(entry.getKey() instanceof String key) || !isWrapperKey(key)) {
+                    continue;
+                }
+                Object nested = findPathValue(entry.getValue(), parts, partIdx);
+                if (nested != null) {
+                    return nested;
+                }
+            }
+            return null;
+        }
+        if (current instanceof Collection<?> collection) {
+            if ("*".equals(part)) {
+                for (Object item : collection) {
+                    Object wildcardNested = findPathValue(item, parts, partIdx + 1);
+                    if (wildcardNested != null) {
+                        return wildcardNested;
+                    }
+                }
+                return null;
+            }
+            Integer index = parseIndex(part);
+            if (index != null && index >= 0 && index < collection.size()) {
+                Object indexed = collection.stream().skip(index).findFirst().orElse(null);
+                return findPathValue(indexed, parts, partIdx + 1);
+            }
+            for (Object item : collection) {
+                Object nested = findPathValue(item, parts, partIdx);
+                if (nested != null) {
+                    return nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    private Integer parseIndex(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+    }
+
+    private Object findByNormalizedKey(Map<?, ?> map, String expectedKey) {
+        if (map.containsKey(expectedKey)) {
+            return map.get(expectedKey);
+        }
+        String normalizedExpected = normalizeKey(expectedKey);
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                continue;
+            }
+            if (normalizeKey(key).equals(normalizedExpected)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private String normalizeKey(String key) {
+        return key == null ? "" : key.replace("_", "").replace("-", "").toLowerCase();
+    }
+
+    private boolean isWrapperKey(String key) {
+        IntegrationGatewayConfiguration.EntityChangedBranchMappingSettings mapping =
+                configuration.getEventing().getEntityChangedBranchMapping();
+        List<String> configured = safeList(mapping.getWrapperKeys(), List.of(
+                "data", "payload", "entity", "entities", "event", "message", "content", "body",
+                "detail", "item", "items", "result", "snapshot", "newvalue", "oldvalue", "branch"
+        ));
+        String normalized = normalizeKey(key);
+        return configured.stream()
+                .map(this::normalizeKey)
+                .anyMatch(item -> item.equals(normalized));
+    }
+
+    private Object firstByKeys(Map<?, ?> map, String... keys) {
+        return firstByKeys(map, List.of(keys));
+    }
+
+    private Object firstByKeys(Map<?, ?> map, List<String> keys) {
+        for (String key : keys) {
+            Object value = findByNormalizedKey(map, key);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private Integer sumVisitsInContainer(Object container) {
+        IntegrationGatewayConfiguration.EntityChangedBranchMappingSettings mapping =
+                configuration.getEventing().getEntityChangedBranchMapping();
+        if (container instanceof Map<?, ?> map) {
+            int total = 0;
+            boolean hasAny = false;
+            for (Object item : map.values()) {
+                total += countVisits(item, mapping);
+                hasAny = true;
+            }
+            return hasAny ? total : 0;
+        }
+        if (container instanceof Collection<?> collection) {
+            int total = 0;
+            for (Object item : collection) {
+                total += countVisits(item, mapping);
+            }
+            return total;
+        }
+        return null;
+    }
+
+    private boolean hasAnyKey(Map<?, ?> map, List<String> keys) {
+        for (String key : keys) {
+            if (findByNormalizedKey(map, key) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<String> safeList(List<String> configured, List<String> defaults) {
+        if (configured == null || configured.isEmpty()) {
+            return defaults;
+        }
+        return configured.stream().filter(Objects::nonNull).toList();
     }
 }

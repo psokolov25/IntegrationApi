@@ -119,6 +119,10 @@
 - Outbox растет: проверить доступность внешнего транспорта и выполнить `POST /api/v1/events/outbox/flush?limit=N`.
 - Branch-state «застывает»: проверить, что приходят события `branch-state-updated`/`VISIT_*`, и нет ли слишком большого debounce-окна.
 - Branch-state не обновляется по `ENTITY_CHANGED`: проверить совпадение `class-name-paths` + `accepted-class-names`, и что `branch-id/status/active-window` доступны по настроенным paths. Если в payload приходит snapshot (`oldValue/newValue`) без канонических полей branch-state, используется fallback: `branchId` из `newValue.id`, `activeWindow` из `newValue.activeWindow|resetTime`, `queueSize` из суммарного числа `servicePoints[*].visits`, `status=UNKNOWN`.
+- Если payload содержит коллекции/неоднородную вложенность (например, `data.entities[*]`, snake_case/kebab-case ключи), маппер branch-state выполняет нормализацию ключей и рекурсивный поиск по path, поэтому при диагностике нужно проверить фактическое расположение данных, а не только «плоские» пути из примеров.
+- Если `servicePoints` отсутствуют, fallback `queueSize` может вычисляться по `queues[*].visits`; при расхождении числа клиентов с UI сверять оба источника (`servicePoints` и `queues`) в snapshot.
+- Для нестандартных payload можно переопределять в конфигурации `integration.eventing.entity-changed-branch-mapping`: `wrapper-keys`, `queue-snapshot-roots`, `service-points-keys`, `queues-keys`, `visits-keys` (без изменения кода).
+- Для `*-paths` и `queue-snapshot-roots` поддерживается wildcard-сегмент `*` (пример: `payload.records.*.after_state.id`) для поиска по массивам/словарям с динамическими ключами.
 - Branch-state «скачет назад»: проверить out-of-order события и `updatedAt` в payload.
 - Для `VISIT_*` убедиться, что `occurredAt` монотонно возрастает в рамках пары `visitManagerId + branchId`; более старые события должны игнорироваться.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
