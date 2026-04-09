@@ -67,6 +67,16 @@ public class EventOutboxService {
                 .toList();
     }
 
+    public List<EventOutboxMessage> snapshot(int limit, String status, boolean includeSent) {
+        String normalizedStatus = status == null ? "" : status.trim().toUpperCase();
+        return storage.values().stream()
+                .filter(item -> includeSent || !"SENT".equals(item.status()))
+                .filter(item -> normalizedStatus.isBlank() || item.status().equalsIgnoreCase(normalizedStatus))
+                .sorted(Comparator.comparing(EventOutboxMessage::updatedAt).reversed())
+                .limit(limit <= 0 ? Integer.MAX_VALUE : limit)
+                .toList();
+    }
+
     public int size() {
         return storage.size();
     }

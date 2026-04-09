@@ -27,6 +27,7 @@ import ru.aritmos.integration.eventing.EventRetryService;
 import ru.aritmos.integration.eventing.EventingStats;
 import ru.aritmos.integration.eventing.IntegrationEvent;
 import ru.aritmos.integration.eventing.EventOutboxMessage;
+import ru.aritmos.integration.eventing.EventInboxService;
 import ru.aritmos.integration.security.RequestSecurityContext;
 import ru.aritmos.integration.security.core.AuthorizationService;
 
@@ -216,11 +217,13 @@ public class EventController {
     @Get("/outbox")
     @Operation(summary = "Снимок outbox", description = "Возвращает события, ожидающие отправки или завершившиеся ошибкой отправки.")
     public List<EventOutboxMessage> outbox(HttpRequest<?> request,
-                                           @QueryValue(defaultValue = "100") int limit) {
+                                           @QueryValue(defaultValue = "100") int limit,
+                                           @QueryValue(defaultValue = "") String status,
+                                           @QueryValue(defaultValue = "false") boolean includeSent) {
         var subject = RequestSecurityContext.current(request)
                 .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
         authorizationService.requirePermission(subject, "event-process");
-        return dispatcherService.outboxSnapshot(limit);
+        return dispatcherService.outboxSnapshot(limit, status, includeSent);
     }
 
     @Get("/outbox/{eventId}")
@@ -246,6 +249,26 @@ public class EventController {
         return dispatcherService.flushOutbox(limit);
     }
 
+    @Post("/outbox/retry/{eventId}")
+    @Operation(summary = "Повторная отправка outbox-сообщения", description = "Принудительно выполняет retry отправки для указанного eventId.")
+    public EventProcessingResult retryOutboxByEventId(HttpRequest<?> request, @PathVariable String eventId) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "event-process");
+        return dispatcherService.retryOutboxByEventId(eventId);
+    }
+
+    @Get("/inbox")
+    @Operation(summary = "Снимок inbox", description = "Возвращает последние записи inbox/idempotency с фильтрацией по статусу.")
+    public List<EventInboxService.InboxEntry> inbox(HttpRequest<?> request,
+                                                    @QueryValue(defaultValue = "100") int limit,
+                                                    @QueryValue(defaultValue = "") String status) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "event-process");
+        return dispatcherService.inboxSnapshot(limit, status);
+    }
+
     @Post("/inbox/recover-stale")
     @Operation(summary = "Восстановить stale inbox processing", description = "Переводит зависшие PROCESSING-записи inbox в FAILED по timeout policy.")
     public Map<String, Object> recoverStaleInbox(HttpRequest<?> request) {
@@ -254,6 +277,17 @@ public class EventController {
         authorizationService.requirePermission(subject, "event-process");
         int recovered = dispatcherService.recoverStaleInboxProcessing();
         return Map.of("recovered", recovered);
+    }
+
+    @Delete("/inbox")
+    @Operation(summary = "Очистить inbox", description = "Удаляет записи inbox по статусу (или все, если статус не указан).")
+    public Map<String, Object> clearInbox(HttpRequest<?> request,
+                                          @QueryValue(defaultValue = "") String status) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "event-process");
+        int removed = dispatcherService.clearInboxByStatus(status);
+        return Map.of("removed", removed, "status", status);
     }
 
     @Post("/maintenance/run")

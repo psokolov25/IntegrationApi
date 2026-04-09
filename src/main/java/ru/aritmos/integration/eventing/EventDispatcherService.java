@@ -190,6 +190,18 @@ public class EventDispatcherService {
         return results;
     }
 
+    public List<EventInboxService.InboxEntry> inboxSnapshot(int limit, String statusFilter) {
+        return inboxService.snapshot(limit, statusFilter);
+    }
+
+    public int clearInboxByStatus(String statusFilter) {
+        int removed = inboxService.removeByStatus(statusFilter);
+        if (removed > 0) {
+            persistState();
+        }
+        return removed;
+    }
+
     public void resetStats() {
         processedCount.set(0);
         duplicateCount.set(0);
@@ -504,10 +516,11 @@ public class EventDispatcherService {
     }
 
     public List<EventOutboxMessage> outboxSnapshot(int limit) {
-        if (limit <= 0) {
-            return outboxService.pending(Integer.MAX_VALUE);
-        }
-        return outboxService.pending(limit);
+        return outboxSnapshot(limit, "", false);
+    }
+
+    public List<EventOutboxMessage> outboxSnapshot(int limit, String status, boolean includeSent) {
+        return outboxService.snapshot(limit, status, includeSent);
     }
 
     public EventOutboxMessage outboxById(String eventId) {
@@ -528,6 +541,17 @@ public class EventDispatcherService {
         }
         persistState();
         return results;
+    }
+
+    public EventProcessingResult retryOutboxByEventId(String eventId) {
+        boolean sent = flushOutboxByEventId(eventId, configuration.getEventing().getMaxRetries() + 1);
+        persistState();
+        return new EventProcessingResult(
+                eventId,
+                sent ? "OUTBOX_SENT" : "OUTBOX_FAILED",
+                sent ? "Отправлено из outbox" : "Не удалось отправить из outbox",
+                1
+        );
     }
 
     private boolean flushOutboxByEventId(String eventId, int maxAttempts) {
