@@ -5,7 +5,8 @@
 2. Проверить конфигурацию интеграции с VisitManager:
    - `integration.visit-managers[*].base-url`;
    - `integration.branch-routing` и `integration.branch-fallback-routing`;
-   - `integration.branch-state-cache-ttl`, `integration.branch-state-event-refresh-debounce`.
+   - `integration.branch-state-cache-ttl`, `integration.branch-state-event-refresh-debounce`;
+   - `integration.eventing.entity-changed-branch-mapping.*` (eventType/class/paths для гибкого маппинга `ENTITY_CHANGED` → branch-state).
 3. Проверить branch-state API (`/api/v1/branches/*`) и eventing pipeline (`/api/v1/events/*`).
 4. При проблемах консистентности branch-state:
    - проверить корректность DataBus payload;
@@ -30,6 +31,12 @@
   - `PUT /api/v1/branches/{branchId}/state`
   - `GET /api/v1/branches/states`
 - Programmable: `POST /api/v1/program/{endpointId}`
+- Programmable Groovy scripts:
+  - `PUT /api/v1/program/scripts/{scriptId}`
+  - `GET /api/v1/program/scripts/{scriptId}`
+  - `DELETE /api/v1/program/scripts/{scriptId}`
+  - `POST /api/v1/program/scripts/{scriptId}/execute`
+  - `POST /api/v1/program/messages/inbound`
 - Eventing ingestion: `POST /api/v1/events/ingest`
 - Eventing replay: `POST /api/v1/events/replay/{eventId}`
 - Eventing DLQ replay: `POST /api/v1/events/replay-dlq/{eventId}`
@@ -64,7 +71,14 @@
   `integration.eventing.snapshot-import-reject-cross-list-duplicates`.
 - Проверить `integration.client-policy.*` (retry/timeout/circuit).
 - Проверить `integration.branch-state-cache-ttl` и `integration.branch-state-event-refresh-debounce`.
+- Проверить `integration.eventing.entity-changed-branch-mapping.event-type` и соответствие `accepted-class-names` данным VisitManager.
+- При изменении payload `ENTITY_CHANGED` актуализировать lists полей `*-paths` в `entity-changed-branch-mapping` (без пересборки IntegrationAPI, если используется внешний конфиг/Groovy-скрипт конфигурации).
 - Проверить `integration.security-mode` и permissions (`event-process` для eventing API).
+- Для Groovy script runtime проверить права `programmable-script-manage` и `programmable-script-execute`.
+- Проверить конфигурацию Redis-хранилища скриптов `integration.programmable-api.script-storage.redis.*`.
+- Проверить реестр внешних REST сервисов `integration.programmable-api.external-rest-services[*]`.
+- Проверить реестр брокеров/шин `integration.programmable-api.message-brokers[*]` и типы adapter-ов.
+- Проверить роутинг реакций на входящие сообщения `integration.programmable-api.message-reactions[*]` (broker-id/topic/script-id).
 - При анализе ошибок использовать поля `code/status/method/path/traceId` из `ErrorResponse`.
 - Для совместимости с VisitManager сверять текущие контракты по `openapi.yml` (ветка `dev`).
 - Для сценариев посредника (VisitManager → АРМ/приемная) проверять `meta.targetSystems` в payload и соответствие ожидаемым получателям.
@@ -72,6 +86,7 @@
 ## Инциденты
 - DLQ растет: проверить handler для `eventType` и валидацию payload.
 - Branch-state «застывает»: проверить, что приходят события `branch-state-updated`/`VISIT_*`, и нет ли слишком большого debounce-окна.
+- Branch-state не обновляется по `ENTITY_CHANGED`: проверить совпадение `class-name-paths` + `accepted-class-names`, и что `branch-id/status/active-window` доступны по настроенным paths.
 - Branch-state «скачет назад»: проверить out-of-order события и `updatedAt` в payload.
 - Для `VISIT_*` убедиться, что `occurredAt` монотонно возрастает в рамках пары `visitManagerId + branchId`; более старые события должны игнорироваться.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
@@ -80,3 +95,6 @@
 - Для ручной очистки «залипших» событий использовать `DELETE /api/v1/events/dlq/{eventId}` или `DELETE /api/v1/events/dlq`.
 - Повторы событий: проверить `eventId` и inbox idempotency.
 - Ошибки downstream: проверить client-policy и circuit status.
+- Ошибки выполнения Groovy-скриптов: проверить синтаксис scriptBody, тип скрипта (`BRANCH_CACHE_QUERY`/`VISIT_MANAGER_ACTION`) и доступность Redis.
+- Ошибки отправки в брокер/шину: проверить корректность `brokerId`, `topic`, тип брокера и наличие adapter-а для `message-brokers[*].type`.
+- Нет реакции на входящее сообщение: проверить matching `broker-id`/`topic`, тип скрипта `MESSAGE_BUS_REACTION` и права `programmable-script-execute`.

@@ -38,6 +38,15 @@
             <artifactId>micronaut-jackson-databind</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>redis.clients</groupId>
+            <artifactId>jedis</artifactId>
+            <version>5.2.0</version>
+        </dependency>
+        <dependency>
             <groupId>io.micronaut.validation</groupId>
             <artifactId>micronaut-validation</artifactId>
         </dependency>

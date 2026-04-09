@@ -160,4 +160,92 @@ class BranchStateUpdatedEventHandlerTest {
         Assertions.assertEquals("OPEN", state.status());
         Assertions.assertEquals("system", state.updatedBy());
     }
+
+    @Test
+    void shouldUpdateCacheFromEntityChangedBranchEvent() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+        cfg.setBranchRouting(Map.of("BR-21", "vm-main"));
+
+        GatewayService gatewayService = new GatewayService(
+                new RoutingService(cfg),
+                new StubVisitManagerClient(cfg),
+                new QueueCache(cfg),
+                new BranchStateCache(cfg),
+                new AuditService(),
+                new VisitManagerMetricsService()
+        );
+        BranchStateUpdatedEventHandler handler = new BranchStateUpdatedEventHandler(gatewayService, new VisitManagerBranchStateEventMapper(cfg));
+
+        handler.handle(new IntegrationEvent(
+                "evt-4",
+                "ENTITY_CHANGED",
+                "vm-main",
+                Instant.parse("2026-01-10T10:15:00Z"),
+                Map.of(
+                        "meta", Map.of("visitManagerId", "vm-main"),
+                        "data", Map.of(
+                                "class", "Branch",
+                                "entity", Map.of(
+                                        "id", "BR-21",
+                                        "status", "PAUSED",
+                                        "activeWindow", "11:00-20:00",
+                                        "queueSize", 5,
+                                        "updatedAt", "2026-01-10T10:14:59Z",
+                                        "updatedBy", "vm-sync"
+                                )
+                        )
+                )
+        ));
+
+        var state = gatewayService.getBranchState("subject", "BR-21", "");
+        Assertions.assertEquals("PAUSED", state.status());
+        Assertions.assertEquals("vm-sync", state.updatedBy());
+        Assertions.assertEquals(5, state.queueSize());
+    }
+
+    @Test
+    void shouldIgnoreEntityChangedForNonBranchClass() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+        cfg.setBranchRouting(Map.of("BR-22", "vm-main"));
+
+        GatewayService gatewayService = new GatewayService(
+                new RoutingService(cfg),
+                new StubVisitManagerClient(cfg),
+                new QueueCache(cfg),
+                new BranchStateCache(cfg),
+                new AuditService(),
+                new VisitManagerMetricsService()
+        );
+        BranchStateUpdatedEventHandler handler = new BranchStateUpdatedEventHandler(gatewayService, new VisitManagerBranchStateEventMapper(cfg));
+
+        handler.handle(new IntegrationEvent(
+                "evt-5",
+                "ENTITY_CHANGED",
+                "vm-main",
+                Instant.parse("2026-01-10T10:20:00Z"),
+                Map.of(
+                        "meta", Map.of("visitManagerId", "vm-main"),
+                        "data", Map.of(
+                                "class", "Visitor",
+                                "entity", Map.of(
+                                        "id", "V-1"
+                                )
+                        )
+                )
+        ));
+
+        var state = gatewayService.getBranchState("subject", "BR-22", "");
+        Assertions.assertEquals("OPEN", state.status(), "некорректный ENTITY_CHANGED не должен ломать branch-state");
+        Assertions.assertEquals(0, state.queueSize());
+    }
 }

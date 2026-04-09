@@ -6,3 +6,16 @@ integration:
       enabled: true
       inbound-topic: databus.inbound
       outbound-topic: databus.outbound
+    entity-changed-branch-mapping:
+      enabled: true
+      event-type: ENTITY_CHANGED
+      class-name-paths: ["class", "data.class", "data.entityClass"]
+      accepted-class-names: ["Branch", "ru.psokolov.visitmanager.Branch"]
+      # Настройте paths под фактический payload в dev-ветке VisitManager.
+      branch-id-paths: ["data.entity.id", "data.branch.id", "branchId"]
+      status-paths: ["data.entity.status", "data.state.status", "status"]
+      active-window-paths: ["data.entity.activeWindow", "data.state.activeWindow", "activeWindow"]
+      queue-size-paths: ["data.entity.queueSize", "data.state.queueSize", "queueSize"]
+      updated-at-paths: ["data.entity.updatedAt", "data.state.updatedAt", "updatedAt"]
+      updated-by-paths: ["data.entity.updatedBy", "data.state.updatedBy", "updatedBy"]
+      visit-manager-id-paths: ["meta.visitManagerId", "data.visitManagerId", "targetVisitManagerId"]

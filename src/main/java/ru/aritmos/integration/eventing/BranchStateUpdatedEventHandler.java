@@ -7,7 +7,7 @@ import ru.aritmos.integration.eventing.visitmanager.VisitManagerBranchStateEvent
 import ru.aritmos.integration.service.GatewayService;
 
 /**
- * Обновляет in-memory кэш состояния отделений по событию branch-state-updated.
+ * Обновляет in-memory кэш состояния отделений по событиям branch-state-updated и ENTITY_CHANGED(Branch).
  */
 @Singleton
 public class BranchStateUpdatedEventHandler implements EventHandler {
@@ -23,12 +23,19 @@ public class BranchStateUpdatedEventHandler implements EventHandler {
 
     @Override
     public boolean supports(String eventType) {
-        return "branch-state-updated".equalsIgnoreCase(eventType);
+        return "branch-state-updated".equalsIgnoreCase(eventType)
+                || mapper.supportsBranchEntityChangedEventType(eventType);
     }
 
     @Override
     public void handle(IntegrationEvent event) {
-        VisitManagerBranchStateEventPayload statePayload = mapper.map(event);
+        if (mapper.supportsBranchEntityChangedEventType(event.eventType())
+                && !mapper.isBranchEntityChanged(event)) {
+            return;
+        }
+        VisitManagerBranchStateEventPayload statePayload = mapper.isBranchEntityChanged(event)
+                ? mapper.mapEntityChangedBranch(event)
+                : mapper.map(event);
 
         gatewayService.applyEventBranchState(new BranchStateDto(
                 statePayload.branchId(),
