@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -15,18 +16,23 @@ import java.util.Map;
 public class LoggingMessageBusAdapter implements CustomerMessageBusAdapter {
 
     private static final Logger LOG = LoggerFactory.getLogger(LoggingMessageBusAdapter.class);
+    private static final List<String> SUPPORTED_TYPES = List.of(
+            "LOGGING", "KAFKA", "DATABUS", "RABBITMQ", "NATS",
+            "PULSAR", "ACTIVEMQ", "AZURE_SERVICE_BUS", "AZURE_EVENT_HUB",
+            "REDPANDA", "SQS", "MQTT", "AWS_SNS"
+    );
 
     @Override
     public boolean supports(String brokerType) {
         if (brokerType == null || brokerType.isBlank()) {
             return true;
         }
-        String normalized = brokerType.toUpperCase();
-        return normalized.equals("LOGGING")
-                || normalized.equals("KAFKA")
-                || normalized.equals("DATABUS")
-                || normalized.equals("RABBITMQ")
-                || normalized.equals("NATS");
+        return SUPPORTED_TYPES.contains(brokerType.toUpperCase());
+    }
+
+    @Override
+    public List<String> supportedBrokerTypes() {
+        return SUPPORTED_TYPES;
     }
 
     @Override

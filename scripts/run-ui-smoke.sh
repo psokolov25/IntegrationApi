@@ -5,8 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 APP_LOG="target/ui-smoke-app.log"
+BASE_URL="${UI_BASE_URL:-http://127.0.0.1:8080}"
 mkdir -p target
-mkdir -p cache/ui-tools/npm cache/ui-tools/playwright cache/m2
+mkdir -p cache/ui-tools/npm cache/ui-tools/playwright cache/ui-tools/playwright-artifacts cache/ui-tools/playwright-report cache/m2
 
 cleanup() {
   if [[ -n "${APP_PID:-}" ]] && kill -0 "${APP_PID}" 2>/dev/null; then
@@ -15,20 +16,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[1/5] Запуск Integration API..."
+echo "[1/6] Запуск Integration API..."
 mvn -q -DskipTests exec:java >"${APP_LOG}" 2>&1 &
 APP_PID=$!
 
-echo "[2/5] Ожидание readiness..."
+echo "[2/6] Ожидание readiness..."
 for _ in {1..60}; do
-  if curl -sf "http://127.0.0.1:8080/health/readiness" >/dev/null; then
+  if curl -sf "${BASE_URL}/health/readiness" >/dev/null; then
     break
   fi
   sleep 1
 done
-curl -sf "http://127.0.0.1:8080/health/readiness" >/dev/null
+curl -sf "${BASE_URL}/health/readiness" >/dev/null
+curl -sf "${BASE_URL}/health" >/dev/null
+curl -sf "${BASE_URL}/ui/" >/dev/null
 
-echo "[3/5] Установка зависимостей UI-тестов..."
+echo "[3/6] Установка зависимостей UI-тестов..."
 cd ui-tests
 NPM_CONFIG_CACHE="$ROOT_DIR/cache/ui-tools/npm" npm install --silent
 
@@ -52,7 +55,7 @@ install_linux_browser_deps() {
     if [[ "$(id -u)" -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
       SUDO="sudo"
     fi
-    echo "[4/5] Установка системных библиотек браузеров через apt-get..."
+    echo "[4/6] Установка системных библиотек браузеров через apt-get..."
     $SUDO apt-get update || return 1
     $SUDO apt-get install -y --no-install-recommends \
       libatk1.0-0 libatk-bridge2.0-0 libcairo2 libcairo-gobject2 \
@@ -79,8 +82,8 @@ fi
 
 run_project() {
   local project="$1"
-  echo "[5/5] Запуск playwright smoke тестов ($project)..."
-  PLAYWRIGHT_BROWSERS_PATH="$ROOT_DIR/cache/ui-tools/playwright" UI_BASE_URL="http://127.0.0.1:8080" npx playwright test --project "$project"
+  echo "[5/6] Запуск playwright smoke тестов ($project)..."
+  PLAYWRIGHT_BROWSERS_PATH="$ROOT_DIR/cache/ui-tools/playwright" UI_BASE_URL="$BASE_URL" npx playwright test --project "$project"
 }
 
 if ! run_project "$SELECTED_PROJECT"; then
@@ -96,5 +99,9 @@ if ! run_project "$SELECTED_PROJECT"; then
     exit 1
   fi
 fi
+
+echo "[6/6] API smoke после GUI-прогона..."
+curl -sf "${BASE_URL}/api/v1/events/stats/health" >/dev/null
+curl -sf "${BASE_URL}/api/v1/events/version" >/dev/null
 
 echo "UI smoke-тесты успешно завершены."

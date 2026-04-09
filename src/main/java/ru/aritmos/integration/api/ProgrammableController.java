@@ -27,6 +27,12 @@ import ru.aritmos.integration.domain.InboundMessageReactionRequest;
 import ru.aritmos.integration.domain.IntegrationTemplateExportRequest;
 import ru.aritmos.integration.domain.IntegrationTemplatePreviewDto;
 import ru.aritmos.integration.domain.ScriptExecutionRequest;
+import ru.aritmos.integration.domain.ConnectorPublishRequest;
+import ru.aritmos.integration.domain.ConnectorRestInvokeRequest;
+import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
+import ru.aritmos.integration.programming.CustomerMessageBusGateway;
+import ru.aritmos.integration.programming.CustomerMessageBusAdapter;
+import ru.aritmos.integration.programming.ExternalRestClient;
 import ru.aritmos.integration.programming.GroovyScriptService;
 import ru.aritmos.integration.programming.IntegrationTemplateArchiveService;
 import ru.aritmos.integration.programming.ProgrammableEndpointService;
@@ -35,6 +41,7 @@ import ru.aritmos.integration.security.core.AuthorizationService;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -48,17 +55,29 @@ public class ProgrammableController {
     private final ProgrammableEndpointService programmableEndpointService;
     private final GroovyScriptService groovyScriptService;
     private final IntegrationTemplateArchiveService templateArchiveService;
+    private final ExternalRestClient externalRestClient;
+    private final CustomerMessageBusGateway customerMessageBusGateway;
+    private final List<CustomerMessageBusAdapter> messageBusAdapters;
+    private final IntegrationGatewayConfiguration configuration;
     private final ObjectMapper objectMapper;
     private final AuthorizationService authorizationService;
 
     public ProgrammableController(ProgrammableEndpointService programmableEndpointService,
                                   GroovyScriptService groovyScriptService,
                                   IntegrationTemplateArchiveService templateArchiveService,
+                                  ExternalRestClient externalRestClient,
+                                  CustomerMessageBusGateway customerMessageBusGateway,
+                                  List<CustomerMessageBusAdapter> messageBusAdapters,
+                                  IntegrationGatewayConfiguration configuration,
                                   ObjectMapper objectMapper,
                                   AuthorizationService authorizationService) {
         this.programmableEndpointService = programmableEndpointService;
         this.groovyScriptService = groovyScriptService;
         this.templateArchiveService = templateArchiveService;
+        this.externalRestClient = externalRestClient;
+        this.customerMessageBusGateway = customerMessageBusGateway;
+        this.messageBusAdapters = messageBusAdapters;
+        this.configuration = configuration;
         this.objectMapper = objectMapper;
         this.authorizationService = authorizationService;
     }
@@ -260,6 +279,90 @@ public class ProgrammableController {
                 payload.scriptId(),
                 subject
         );
+    }
+
+    @Get("/connectors/catalog")
+    @Operation(summary = "Каталог коннекторов", description = "Возвращает список подключенных REST-сервисов, брокеров и реакций message bus для GUI/операторов.")
+    public Map<String, Object> connectorsCatalog(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+
+        var restServices = configuration.getProgrammableApi().getExternalRestServices().stream()
+                .map(item -> Map.of(
+                        "id", item.getId(),
+                        "baseUrl", item.getBaseUrl(),
+                        "defaultHeadersConfigured", item.getDefaultHeaders() != null && !item.getDefaultHeaders().isEmpty()
+                ))
+                .toList();
+        var messageBrokers = configuration.getProgrammableApi().getMessageBrokers().stream()
+                .map(item -> Map.of(
+                        "id", item.getId(),
+                        "type", item.getType(),
+                        "enabled", item.isEnabled()
+                ))
+                .toList();
+        var messageReactions = configuration.getProgrammableApi().getMessageReactions().stream()
+                .map(item -> Map.of(
+                        "brokerId", item.getBrokerId(),
+                        "topic", item.getTopic(),
+                        "scriptId", item.getScriptId()
+                ))
+                .toList();
+
+        return Map.of(
+                "externalRestServices", restServices,
+                "messageBrokers", messageBrokers,
+                "messageReactions", messageReactions,
+                "supportedBrokerTypes", supportedBrokerTypes()
+        );
+    }
+
+    @Get("/connectors/broker-types")
+    @Operation(summary = "Поддерживаемые типы брокеров", description = "Возвращает объединенный список типов брокеров, поддерживаемых зарегистрированными adapter-ами.")
+    public Map<String, Object> supportedBrokerTypesCatalog(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return Map.of("supportedBrokerTypes", supportedBrokerTypes());
+    }
+
+    @Post("/connectors/rest/invoke")
+    @Operation(summary = "Ручной вызов внешнего REST-сервиса", description = "Операционный invoke через настроенный REST-коннектор заказчика.")
+    public Map<String, Object> invokeExternalRest(HttpRequest<?> request,
+                                                  @Body ConnectorRestInvokeRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return externalRestClient.invoke(
+                payload.serviceId(),
+                payload.method(),
+                payload.path(),
+                payload.body() == null ? Map.of() : payload.body(),
+                payload.headers() == null ? Map.of() : payload.headers()
+        );
+    }
+
+    @Post("/connectors/bus/publish")
+    @Operation(summary = "Ручная публикация в брокер/шину", description = "Операционный publish через настроенный adapter message bus.")
+    public Map<String, Object> publishMessage(HttpRequest<?> request,
+                                              @Body ConnectorPublishRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return customerMessageBusGateway.publish(
+                payload.brokerId(),
+                payload.topic(),
+                payload.key(),
+                payload.payload() == null ? Map.of() : payload.payload(),
+                payload.headers() == null ? Map.of() : payload.headers()
+        );
+    }
+
+    private List<String> supportedBrokerTypes() {
+        LinkedHashSet<String> supported = new LinkedHashSet<>();
+        messageBusAdapters.forEach(adapter -> supported.addAll(adapter.supportedBrokerTypes()));
+        return supported.stream().sorted().toList();
     }
 
     @Post(value = "/templates/import/preview", consumes = MediaType.MULTIPART_FORM_DATA)
