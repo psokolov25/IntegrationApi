@@ -24,6 +24,8 @@
 - Health: `GET /health`
 - Liveness: `GET /health/liveness`
 - Readiness: `GET /health/readiness`
+- `GET /health/readiness` возвращает компоненты по ключевым группам (`gateway`, `federation`, `eventing`, `security-mode`, `security`, `programmable-api`, `client-policy`, `observability`); `security` отражает корректность конфигурации режима безопасности (например, `API_KEY` без ключей -> `DOWN`, `HYBRID` без API keys и keycloak issuer -> `DEGRADED`).
+- Итоговый readiness становится `DEGRADED`, если любой компонент имеет `DOWN` или `DEGRADED`.
 - Gateway API: `/api/v1/queues`, `/api/v1/queues/aggregate`
 - Branch-state API:
   - `GET /api/v1/branches/{branchId}/state`
@@ -31,6 +33,14 @@
   - `PUT /api/v1/branches/{branchId}/state`
   - `GET /api/v1/branches/states`
 - Programmable: `POST /api/v1/program/{endpointId}`
+- Programmable Studio bootstrap: `GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20` (для GUI/IDE редактора: runtime, inbox/outbox, connectors, settings, tabs, `editorSettings`, `editorCapabilities`, `gui.actions`).
+- IDE editor settings API:
+  - `GET /api/v1/program/studio/settings`
+  - `PUT /api/v1/program/studio/settings` (theme/fontSize/autoSave/wordWrap/lastScriptId).
+  - `GET /api/v1/program/studio/capabilities` (доступные темы/лимиты и путь персистентности настроек).
+  - `GET /api/v1/program/studio/operations/catalog` (каталог операций и templates параметров для GUI).
+  - `POST /api/v1/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`).
+  - `GET /api/v1/program/studio/playbook` (пошаговый операционный чек-лист по всем группам studio-фич).
 
 - ITS (integration templates) для programmable handlers:
   - Предпросмотр: `POST /api/v1/program/templates/import/preview` (multipart `archive`).
@@ -125,6 +135,7 @@
 - Для `*-paths` и `queue-snapshot-roots` поддерживается wildcard-сегмент `*` (пример: `payload.records.*.after_state.id`) для поиска по массивам/словарям с динамическими ключами.
 - Branch-state «скачет назад»: проверить out-of-order события и `updatedAt` в payload.
 - Для `VISIT_*` убедиться, что `occurredAt` монотонно возрастает в рамках пары `visitManagerId + branchId`; более старые события должны игнорироваться.
+- Для `VISIT_*` поддерживаются как плоские поля (`branchId`, `visitManagerId`), так и вложенные варианты (`data.branch.id`, `data.meta.visitManagerId`, snake_case), поэтому при интеграции с DataBus проверять фактическую вложенность `meta/data/...`.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
 - Для точечного восстановления обработать событие через `POST /api/v1/events/replay-dlq/{eventId}`.
 - Для массового восстановления использовать `POST /api/v1/events/replay-dlq?limit=N`.
@@ -132,5 +143,8 @@
 - Повторы событий: проверить `eventId` и inbox idempotency.
 - Ошибки downstream: проверить client-policy и circuit status.
 - Ошибки выполнения Groovy-скриптов: проверить синтаксис scriptBody, тип скрипта (`BRANCH_CACHE_QUERY`/`VISIT_MANAGER_ACTION`) и доступность Redis.
+- Для диагностики IDE/GUI редактора выполнять `GET /api/v1/program/studio/bootstrap` и сверять блоки `ide/runtime/connectors/eventing/settings/gui`.
+- При проблемах персонализации IDE проверить `GET/PUT /api/v1/program/studio/settings` и корректность значений (`theme=dark|light|contrast`, `fontSize=10..28`).
+- Настройки IDE персистятся в файл `.../editor-settings.json` внутри `integration.programmable-api.script-storage.file.path` (по умолчанию `cache/program-scripts/editor-settings.json`).
 - Ошибки отправки в брокер/шину: проверить корректность `brokerId`, `topic`, тип брокера и наличие adapter-а для `message-brokers[*].type`.
 - Нет реакции на входящее сообщение: проверить matching `broker-id`/`topic`, тип скрипта `MESSAGE_BUS_REACTION` и права `programmable-script-execute`.

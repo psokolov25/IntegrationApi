@@ -118,6 +118,7 @@ button:hover { border-color: #11a19a; background: rgba(17, 153, 142, 0.2); }
 .card .value { font-size: 26px; font-weight: 700; color: var(--brand-1); }
 
 .actions-row { margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap; }
+.inline-json-input { min-width: 300px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
 
 .mono {

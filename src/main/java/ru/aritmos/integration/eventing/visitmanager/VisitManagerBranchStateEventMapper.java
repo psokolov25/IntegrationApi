@@ -71,9 +71,27 @@ public class VisitManagerBranchStateEventMapper {
         if (payload == null) {
             throw new IllegalArgumentException("payload обязателен для VisitManager visit-event");
         }
-        String branchId = required(payload, "branchId", "data.branchId", "visit.branchId", "data.visit.branchId");
-        String sourceVisitManagerId = asString(first(payload, "meta.visitManagerId", "metadata.visitManagerId",
-                "data.visitManagerId", "visitManagerId", "targetVisitManagerId"));
+        String branchId = required(payload,
+                "branchId",
+                "branch_id",
+                "data.branchId",
+                "data.branch_id",
+                "data.branch.id",
+                "visit.branchId",
+                "visit.branch_id",
+                "data.visit.branchId",
+                "data.visit.branch_id");
+        String sourceVisitManagerId = asString(first(payload,
+                "meta.visitManagerId",
+                "meta.targetVisitManagerId",
+                "metadata.visitManagerId",
+                "data.meta.visitManagerId",
+                "data.metadata.visitManagerId",
+                "data.visitManagerId",
+                "data.targetVisitManagerId",
+                "visitManagerId",
+                "targetVisitManagerId",
+                "target_visit_manager_id"));
         if (sourceVisitManagerId == null || sourceVisitManagerId.isBlank()) {
             sourceVisitManagerId = event.source();
         }
