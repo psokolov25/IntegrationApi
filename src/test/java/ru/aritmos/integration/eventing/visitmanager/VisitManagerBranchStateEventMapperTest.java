@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 
 class VisitManagerBranchStateEventMapperTest {
@@ -187,6 +188,161 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals("cd842979-3dc1-4505-a1ae-9a92f0622da2", mapped.branchId());
         Assertions.assertEquals("UNKNOWN", mapped.status());
         Assertions.assertEquals("11:24:00", mapped.activeWindow());
+        Assertions.assertEquals(1, mapped.queueSize());
+    }
+
+    @Test
+    void shouldInferQueueSizeWhenServicePointsComeAsArray() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-7",
+                "ENTITY_CHANGED",
+                "vm-main",
+                Instant.parse("2026-04-09T10:15:00Z"),
+                Map.of(
+                        "className", "ru.psokolov.visitmanager.Branch",
+                        "entityId", "BR-ARRAY-1",
+                        "newValue", Map.of(
+                                "id", "BR-ARRAY-1",
+                                "servicePoints", java.util.List.of(
+                                        Map.of("id", "sp-1", "visits", java.util.List.of(Map.of("id", "v-1"))),
+                                        Map.of("id", "sp-2", "visits", java.util.List.of(Map.of("id", "v-2"), Map.of("id", "v-3"))),
+                                        Map.of("id", "sp-3", "visits", Map.of("v-4", Map.of("id", "v-4")))
+                                )
+                        )
+                )
+        );
+
+        Assertions.assertTrue(mapper.isBranchEntityChanged(event));
+        VisitManagerBranchStateEventPayload mapped = mapper.mapEntityChangedBranch(event);
+        Assertions.assertEquals(4, mapped.queueSize());
+    }
+
+    @Test
+    void shouldResolveEntityChangedFieldsInsideCollectionsAndSnakeCaseKeys() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-8",
+                "ENTITY_CHANGED",
+                "vm-main",
+                Instant.parse("2026-04-09T10:25:00Z"),
+                Map.of(
+                        "data", Map.of(
+                                "entities", List.of(
+                                        Map.of(
+                                                "class_name", "ru.psokolov.visitmanager.Branch",
+                                                "new_value", Map.of(
+                                                        "branch_id", "BR-COLLECTION-1",
+                                                        "active_window", "08:00-20:00",
+                                                        "service_points", List.of(
+                                                                Map.of("visits", List.of(Map.of("id", "v-1"), Map.of("id", "v-2")))
+                                                        )
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
+
+        Assertions.assertTrue(mapper.isBranchEntityChanged(event));
+        VisitManagerBranchStateEventPayload mapped = mapper.mapEntityChangedBranch(event);
+        Assertions.assertEquals("BR-COLLECTION-1", mapped.branchId());
+        Assertions.assertEquals("08:00-20:00", mapped.activeWindow());
+        Assertions.assertEquals(2, mapped.queueSize());
+    }
+
+    @Test
+    void shouldInferQueueSizeFromQueuesWhenServicePointsMissing() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-9",
+                "ENTITY_CHANGED",
+                "vm-main",
+                Instant.parse("2026-04-09T10:30:00Z"),
+                Map.of(
+                        "className", "Branch",
+                        "newValue", Map.of(
+                                "id", "BR-QUEUE-1",
+                                "queues", Map.of(
+                                        "q-1", Map.of("visits", List.of(Map.of("id", "v-1"))),
+                                        "q-2", Map.of("visits", List.of(Map.of("id", "v-2"), Map.of("id", "v-3")))
+                                )
+                        )
+                )
+        );
+
+        VisitManagerBranchStateEventPayload mapped = mapper.mapEntityChangedBranch(event);
+        Assertions.assertEquals(3, mapped.queueSize());
+    }
+
+    @Test
+    void shouldUseConfigurableWrapperAndQueueSnapshotKeys() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().getEntityChangedBranchMapping().setWrapperKeys(List.of("records", "payload"));
+        cfg.getEventing().getEntityChangedBranchMapping().setBranchIdPaths(List.of("payload.records.0.after_state.id"));
+        cfg.getEventing().getEntityChangedBranchMapping().setQueueSnapshotRoots(List.of("payload.records.0.after_state"));
+        cfg.getEventing().getEntityChangedBranchMapping().setServicePointsKeys(List.of("desks"));
+        cfg.getEventing().getEntityChangedBranchMapping().setVisitsKeys(List.of("tickets"));
+        VisitManagerBranchStateEventMapper configurableMapper = new VisitManagerBranchStateEventMapper(cfg);
+
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-10",
+                "ENTITY_CHANGED",
+                "vm-main",
+                Instant.parse("2026-04-09T11:00:00Z"),
+                Map.of(
+                        "className", "Branch",
+                        "payload", Map.of(
+                                "records", List.of(
+                                        Map.of(
+                                                "after_state", Map.of(
+                                                        "id", "BR-CFG-1",
+                                                        "desks", Map.of(
+                                                                "d-1", Map.of("tickets", List.of(Map.of("id", "t1"), Map.of("id", "t2")))
+                                                        )
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
+
+        VisitManagerBranchStateEventPayload mapped = configurableMapper.mapEntityChangedBranch(event);
+        Assertions.assertEquals("BR-CFG-1", mapped.branchId());
+        Assertions.assertEquals(2, mapped.queueSize());
+    }
+
+    @Test
+    void shouldSupportWildcardSegmentsInConfiguredPaths() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().getEntityChangedBranchMapping().setBranchIdPaths(List.of("payload.records.*.after_state.id"));
+        cfg.getEventing().getEntityChangedBranchMapping().setQueueSnapshotRoots(List.of("payload.records.*.after_state"));
+        cfg.getEventing().getEntityChangedBranchMapping().setServicePointsKeys(List.of("desks"));
+        cfg.getEventing().getEntityChangedBranchMapping().setVisitsKeys(List.of("tickets"));
+        VisitManagerBranchStateEventMapper configurableMapper = new VisitManagerBranchStateEventMapper(cfg);
+
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-11",
+                "ENTITY_CHANGED",
+                "vm-main",
+                Instant.parse("2026-04-09T11:20:00Z"),
+                Map.of(
+                        "className", "Branch",
+                        "payload", Map.of(
+                                "records", List.of(
+                                        Map.of("ignored", true),
+                                        Map.of(
+                                                "after_state", Map.of(
+                                                        "id", "BR-WILDCARD-1",
+                                                        "desks", List.of(
+                                                                Map.of("tickets", List.of(Map.of("id", "t1")))
+                                                        )
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
+
+        VisitManagerBranchStateEventPayload mapped = configurableMapper.mapEntityChangedBranch(event);
+        Assertions.assertEquals("BR-WILDCARD-1", mapped.branchId());
         Assertions.assertEquals(1, mapped.queueSize());
     }
 }
