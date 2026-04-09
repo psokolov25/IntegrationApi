@@ -8,7 +8,7 @@ integration:
   internal-clients:
     - client-id: integration-admin
       client-secret: integration-secret
-      permissions: ["queue-view", "queue-call", "queue-aggregate", "metrics-view", "event-process", "branch-state-view", "branch-state-manage"]
+      permissions: ["queue-view", "queue-call", "queue-aggregate", "metrics-view", "event-process", "branch-state-view", "branch-state-manage", "programmable-script-manage", "programmable-script-execute"]
   keycloak:
     issuer: ""
     audience: ""
@@ -18,6 +18,28 @@ integration:
     - dev-api-key
   programmable-api:
     enabled: true
+    script-storage:
+      redis:
+        enabled: false
+        host: localhost
+        port: 6379
+        database: 0
+        password: ""
+        key-prefix: integration:groovy:script:
+    external-rest-services:
+      - id: customer-crm
+        base-url: http://localhost:8090
+        default-headers: {}
+    message-brokers:
+      - id: customer-databus
+        type: LOGGING
+        enabled: true
+        properties: {}
+    message-reactions:
+      - broker-id: customer-databus
+        topic: branch.state.changed
+        script-id: branch-state-reaction
+        enabled: true
     endpoints:
       - id: queuesByBranch
         operation: FETCH_QUEUES
@@ -47,6 +69,18 @@ integration:
       enabled: false
       inbound-topic: integration.inbound
       outbound-topic: integration.outbound
+    entity-changed-branch-mapping:
+      enabled: true
+      event-type: ENTITY_CHANGED
+      class-name-paths: ["class", "entityClass", "data.class", "data.entityClass", "data.entity.class", "meta.class", "meta.entityClass"]
+      accepted-class-names: ["Branch"]
+      branch-id-paths: ["data.branch.id", "data.branchId", "data.branch_id", "data.entity.id", "data.entity.branchId", "branch.id", "branchId", "branch_id"]
+      status-paths: ["data.state.status", "data.state.code", "data.status", "data.entity.state.status", "data.entity.status", "status", "state"]
+      active-window-paths: ["data.state.activeWindow", "data.state.active_window", "data.activeWindow", "data.entity.state.activeWindow", "data.entity.activeWindow", "activeWindow", "active_window"]
+      queue-size-paths: ["data.state.queueSize", "data.queueSize", "data.entity.state.queueSize", "data.entity.queueSize", "queueSize", "queue_size"]
+      updated-at-paths: ["data.state.updatedAt", "data.updatedAt", "data.entity.state.updatedAt", "data.entity.updatedAt", "updatedAt", "updated_at"]
+      updated-by-paths: ["data.state.updatedBy", "data.updatedBy", "data.entity.state.updatedBy", "data.entity.updatedBy", "updatedBy", "updated_by"]
+      visit-manager-id-paths: ["meta.visitManagerId", "metadata.visitManagerId", "data.visitManagerId", "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"]
   queue-cache-ttl: 30s
   branch-state-cache-ttl: 15s
   branch-state-event-refresh-debounce: 2s

@@ -204,6 +204,7 @@ public class IntegrationGatewayConfiguration {
         private boolean snapshotImportRequireMatchingProcessedKeys = true;
         private boolean snapshotImportRejectCrossListDuplicates = true;
         private KafkaSettings kafka = new KafkaSettings();
+        private EntityChangedBranchMappingSettings entityChangedBranchMapping = new EntityChangedBranchMappingSettings();
 
         public boolean isEnabled() {
             return enabled;
@@ -308,6 +309,179 @@ public class IntegrationGatewayConfiguration {
         public void setSnapshotImportRejectCrossListDuplicates(boolean snapshotImportRejectCrossListDuplicates) {
             this.snapshotImportRejectCrossListDuplicates = snapshotImportRejectCrossListDuplicates;
         }
+
+        public EntityChangedBranchMappingSettings getEntityChangedBranchMapping() {
+            return entityChangedBranchMapping;
+        }
+
+        public void setEntityChangedBranchMapping(EntityChangedBranchMappingSettings entityChangedBranchMapping) {
+            this.entityChangedBranchMapping = entityChangedBranchMapping;
+        }
+    }
+
+    @Introspected
+    public static class EntityChangedBranchMappingSettings {
+        private boolean enabled = true;
+        private String eventType = "ENTITY_CHANGED";
+        private List<String> classNamePaths = List.of(
+                "class",
+                "entityClass",
+                "data.class",
+                "data.entityClass",
+                "data.entity.class",
+                "meta.class",
+                "meta.entityClass"
+        );
+        private List<String> acceptedClassNames = List.of("Branch");
+        private List<String> branchIdPaths = List.of(
+                "data.branch.id",
+                "data.branchId",
+                "data.branch_id",
+                "data.entity.id",
+                "data.entity.branchId",
+                "branch.id",
+                "branchId",
+                "branch_id"
+        );
+        private List<String> statusPaths = List.of(
+                "data.state.status",
+                "data.state.code",
+                "data.status",
+                "data.entity.state.status",
+                "data.entity.status",
+                "status",
+                "state"
+        );
+        private List<String> activeWindowPaths = List.of(
+                "data.state.activeWindow",
+                "data.state.active_window",
+                "data.activeWindow",
+                "data.entity.state.activeWindow",
+                "data.entity.activeWindow",
+                "activeWindow",
+                "active_window"
+        );
+        private List<String> queueSizePaths = List.of(
+                "data.state.queueSize",
+                "data.queueSize",
+                "data.entity.state.queueSize",
+                "data.entity.queueSize",
+                "queueSize",
+                "queue_size"
+        );
+        private List<String> updatedAtPaths = List.of(
+                "data.state.updatedAt",
+                "data.updatedAt",
+                "data.entity.state.updatedAt",
+                "data.entity.updatedAt",
+                "updatedAt",
+                "updated_at"
+        );
+        private List<String> updatedByPaths = List.of(
+                "data.state.updatedBy",
+                "data.updatedBy",
+                "data.entity.state.updatedBy",
+                "data.entity.updatedBy",
+                "updatedBy",
+                "updated_by"
+        );
+        private List<String> visitManagerIdPaths = List.of(
+                "meta.visitManagerId",
+                "metadata.visitManagerId",
+                "data.visitManagerId",
+                "data.targetVisitManagerId",
+                "visitManagerId",
+                "targetVisitManagerId",
+                "target_visit_manager_id"
+        );
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getEventType() {
+            return eventType;
+        }
+
+        public void setEventType(String eventType) {
+            this.eventType = eventType;
+        }
+
+        public List<String> getClassNamePaths() {
+            return classNamePaths;
+        }
+
+        public void setClassNamePaths(List<String> classNamePaths) {
+            this.classNamePaths = classNamePaths;
+        }
+
+        public List<String> getAcceptedClassNames() {
+            return acceptedClassNames;
+        }
+
+        public void setAcceptedClassNames(List<String> acceptedClassNames) {
+            this.acceptedClassNames = acceptedClassNames;
+        }
+
+        public List<String> getBranchIdPaths() {
+            return branchIdPaths;
+        }
+
+        public void setBranchIdPaths(List<String> branchIdPaths) {
+            this.branchIdPaths = branchIdPaths;
+        }
+
+        public List<String> getStatusPaths() {
+            return statusPaths;
+        }
+
+        public void setStatusPaths(List<String> statusPaths) {
+            this.statusPaths = statusPaths;
+        }
+
+        public List<String> getActiveWindowPaths() {
+            return activeWindowPaths;
+        }
+
+        public void setActiveWindowPaths(List<String> activeWindowPaths) {
+            this.activeWindowPaths = activeWindowPaths;
+        }
+
+        public List<String> getQueueSizePaths() {
+            return queueSizePaths;
+        }
+
+        public void setQueueSizePaths(List<String> queueSizePaths) {
+            this.queueSizePaths = queueSizePaths;
+        }
+
+        public List<String> getUpdatedAtPaths() {
+            return updatedAtPaths;
+        }
+
+        public void setUpdatedAtPaths(List<String> updatedAtPaths) {
+            this.updatedAtPaths = updatedAtPaths;
+        }
+
+        public List<String> getUpdatedByPaths() {
+            return updatedByPaths;
+        }
+
+        public void setUpdatedByPaths(List<String> updatedByPaths) {
+            this.updatedByPaths = updatedByPaths;
+        }
+
+        public List<String> getVisitManagerIdPaths() {
+            return visitManagerIdPaths;
+        }
+
+        public void setVisitManagerIdPaths(List<String> visitManagerIdPaths) {
+            this.visitManagerIdPaths = visitManagerIdPaths;
+        }
     }
 
     @Introspected
@@ -385,6 +559,10 @@ public class IntegrationGatewayConfiguration {
     public static class ProgrammableApiSettings {
         private boolean enabled = false;
         private List<ProgrammableEndpoint> endpoints = new ArrayList<>();
+        private ScriptStorageSettings scriptStorage = new ScriptStorageSettings();
+        private List<ExternalRestServiceSettings> externalRestServices = new ArrayList<>();
+        private List<MessageBrokerSettings> messageBrokers = new ArrayList<>();
+        private List<MessageReactionRouteSettings> messageReactions = new ArrayList<>();
 
         public boolean isEnabled() {
             return enabled;
@@ -400,6 +578,227 @@ public class IntegrationGatewayConfiguration {
 
         public void setEndpoints(List<ProgrammableEndpoint> endpoints) {
             this.endpoints = endpoints;
+        }
+
+        public ScriptStorageSettings getScriptStorage() {
+            return scriptStorage;
+        }
+
+        public void setScriptStorage(ScriptStorageSettings scriptStorage) {
+            this.scriptStorage = scriptStorage;
+        }
+
+        public List<ExternalRestServiceSettings> getExternalRestServices() {
+            return externalRestServices;
+        }
+
+        public void setExternalRestServices(List<ExternalRestServiceSettings> externalRestServices) {
+            this.externalRestServices = externalRestServices;
+        }
+
+        public List<MessageBrokerSettings> getMessageBrokers() {
+            return messageBrokers;
+        }
+
+        public void setMessageBrokers(List<MessageBrokerSettings> messageBrokers) {
+            this.messageBrokers = messageBrokers;
+        }
+
+        public List<MessageReactionRouteSettings> getMessageReactions() {
+            return messageReactions;
+        }
+
+        public void setMessageReactions(List<MessageReactionRouteSettings> messageReactions) {
+            this.messageReactions = messageReactions;
+        }
+    }
+
+    @Introspected
+    public static class ScriptStorageSettings {
+        private RedisScriptStorageSettings redis = new RedisScriptStorageSettings();
+
+        public RedisScriptStorageSettings getRedis() {
+            return redis;
+        }
+
+        public void setRedis(RedisScriptStorageSettings redis) {
+            this.redis = redis;
+        }
+    }
+
+    @Introspected
+    public static class RedisScriptStorageSettings {
+        private boolean enabled = false;
+        private String host = "localhost";
+        private int port = 6379;
+        private int database = 0;
+        private String password = "";
+        private String keyPrefix = "integration:groovy:script:";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public int getDatabase() {
+            return database;
+        }
+
+        public void setDatabase(int database) {
+            this.database = database;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+
+        public String getKeyPrefix() {
+            return keyPrefix;
+        }
+
+        public void setKeyPrefix(String keyPrefix) {
+            this.keyPrefix = keyPrefix;
+        }
+    }
+
+    @Introspected
+    public static class ExternalRestServiceSettings {
+        @NotBlank
+        private String id;
+        @NotBlank
+        private String baseUrl;
+        private Map<String, String> defaultHeaders = new HashMap<>();
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+
+        public Map<String, String> getDefaultHeaders() {
+            return defaultHeaders;
+        }
+
+        public void setDefaultHeaders(Map<String, String> defaultHeaders) {
+            this.defaultHeaders = defaultHeaders;
+        }
+    }
+
+    @Introspected
+    public static class MessageBrokerSettings {
+        @NotBlank
+        private String id;
+        @NotBlank
+        private String type = "LOGGING";
+        private boolean enabled = true;
+        private Map<String, String> properties = new HashMap<>();
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public void setType(String type) {
+            this.type = type;
+        }
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Map<String, String> getProperties() {
+            return properties;
+        }
+
+        public void setProperties(Map<String, String> properties) {
+            this.properties = properties;
+        }
+    }
+
+    @Introspected
+    public static class MessageReactionRouteSettings {
+        @NotBlank
+        private String brokerId;
+        @NotBlank
+        private String topic = "*";
+        @NotBlank
+        private String scriptId;
+        private boolean enabled = true;
+
+        public String getBrokerId() {
+            return brokerId;
+        }
+
+        public void setBrokerId(String brokerId) {
+            this.brokerId = brokerId;
+        }
+
+        public String getTopic() {
+            return topic;
+        }
+
+        public void setTopic(String topic) {
+            this.topic = topic;
+        }
+
+        public String getScriptId() {
+            return scriptId;
+        }
+
+        public void setScriptId(String scriptId) {
+            this.scriptId = scriptId;
+        }
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
         }
     }
 

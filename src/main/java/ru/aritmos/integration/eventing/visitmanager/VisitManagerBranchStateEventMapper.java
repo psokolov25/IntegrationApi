@@ -1,6 +1,7 @@
 package ru.aritmos.integration.eventing.visitmanager;
 
 import jakarta.inject.Singleton;
+import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 import ru.aritmos.integration.eventing.IntegrationEvent;
 
 import java.time.Instant;
@@ -13,6 +14,16 @@ import java.util.Objects;
  */
 @Singleton
 public class VisitManagerBranchStateEventMapper {
+
+    private final IntegrationGatewayConfiguration configuration;
+
+    public VisitManagerBranchStateEventMapper() {
+        this(new IntegrationGatewayConfiguration());
+    }
+
+    public VisitManagerBranchStateEventMapper(IntegrationGatewayConfiguration configuration) {
+        this.configuration = configuration;
+    }
 
     public VisitManagerBranchStateEventPayload map(IntegrationEvent event) {
         Map<String, Object> payload = event.payload();
@@ -68,6 +79,87 @@ public class VisitManagerBranchStateEventMapper {
         return new VisitManagerVisitEventPayload(sourceVisitManagerId, branchId, event.eventType());
     }
 
+    /**
+     * Проверяет, что событие соответствует ENTITY_CHANGED для Branch по правилам из конфигурации.
+     */
+    public boolean supportsBranchEntityChangedEventType(String eventType) {
+        IntegrationGatewayConfiguration.EntityChangedBranchMappingSettings mapping =
+                configuration.getEventing().getEntityChangedBranchMapping();
+        if (!mapping.isEnabled()) {
+            return false;
+        }
+        String configuredType = mapping.getEventType();
+        if (configuredType == null || configuredType.isBlank()) {
+            configuredType = "ENTITY_CHANGED";
+        }
+        return configuredType.equalsIgnoreCase(eventType);
+    }
+
+    /**
+     * Проверяет, что событие соответствует ENTITY_CHANGED для Branch по правилам из конфигурации.
+     */
+    public boolean isBranchEntityChanged(IntegrationEvent event) {
+        if (!supportsBranchEntityChangedEventType(event.eventType())) {
+            return false;
+        }
+        IntegrationGatewayConfiguration.EntityChangedBranchMappingSettings mapping =
+                configuration.getEventing().getEntityChangedBranchMapping();
+        Map<String, Object> payload = event.payload();
+        if (payload == null) {
+            return false;
+        }
+        Object classValue = first(payload, safePaths(mapping.getClassNamePaths()));
+        if (classValue == null) {
+            return false;
+        }
+        String normalized = normalizedClassName(classValue);
+        if (normalized == null) {
+            return false;
+        }
+        return mapping.getAcceptedClassNames().stream()
+                .filter(Objects::nonNull)
+                .map(this::normalizedClassName)
+                .filter(Objects::nonNull)
+                .anyMatch(item -> item.equalsIgnoreCase(normalized));
+    }
+
+    /**
+     * Маппинг ENTITY_CHANGED(Branch) в каноническое состояние branch-state.
+     */
+    public VisitManagerBranchStateEventPayload mapEntityChangedBranch(IntegrationEvent event) {
+        IntegrationGatewayConfiguration.EntityChangedBranchMappingSettings mapping =
+                configuration.getEventing().getEntityChangedBranchMapping();
+        Map<String, Object> payload = event.payload();
+        if (payload == null) {
+            throw new IllegalArgumentException("payload обязателен для ENTITY_CHANGED(Branch)");
+        }
+        String branchId = required(payload, safePaths(mapping.getBranchIdPaths()));
+        String sourceVisitManagerId = asString(first(payload, safePaths(mapping.getVisitManagerIdPaths())));
+        if (sourceVisitManagerId == null || sourceVisitManagerId.isBlank()) {
+            sourceVisitManagerId = event.source();
+        }
+        if (sourceVisitManagerId == null || sourceVisitManagerId.isBlank()) {
+            throw new IllegalArgumentException("visitManagerId обязателен (в payload или source события)");
+        }
+        String status = required(payload, safePaths(mapping.getStatusPaths()));
+        String activeWindow = required(payload, safePaths(mapping.getActiveWindowPaths()));
+        int queueSize = parseQueueSize(first(payload, safePaths(mapping.getQueueSizePaths())));
+        Instant updatedAt = parseUpdatedAt(first(payload, safePaths(mapping.getUpdatedAtPaths())), event.occurredAt());
+        String updatedBy = asString(first(payload, safePaths(mapping.getUpdatedByPaths())));
+        if (updatedBy == null || updatedBy.isBlank()) {
+            updatedBy = event.source();
+        }
+        return new VisitManagerBranchStateEventPayload(
+                sourceVisitManagerId,
+                branchId,
+                status,
+                activeWindow,
+                queueSize,
+                updatedAt,
+                updatedBy
+        );
+    }
+
     private String required(Map<String, Object> payload, String... paths) {
         String value = asString(first(payload, paths));
         if (value == null || value.isBlank()) {
@@ -84,6 +176,15 @@ public class VisitManagerBranchStateEventMapper {
             }
         }
         return null;
+    }
+
+    private String[] safePaths(java.util.List<String> paths) {
+        if (paths == null || paths.isEmpty()) {
+            return new String[0];
+        }
+        return paths.stream()
+                .filter(Objects::nonNull)
+                .toArray(String[]::new);
     }
 
     @SuppressWarnings("unchecked")
@@ -106,6 +207,18 @@ public class VisitManagerBranchStateEventMapper {
 
     private String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private String normalizedClassName(Object value) {
+        String className = asString(value);
+        if (className == null || className.isBlank()) {
+            return null;
+        }
+        int dotIdx = className.lastIndexOf('.');
+        if (dotIdx < 0) {
+            return className.trim();
+        }
+        return className.substring(dotIdx + 1).trim();
     }
 
     private int parseQueueSize(Object value) {

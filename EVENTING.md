@@ -34,6 +34,7 @@
 - replay store (`EventStoreService`)
 - transport adapter SPI (`EventTransportAdapter`)
 - базовый Kafka/DataBus adapter (`KafkaDataBusTransportAdapter`, logging placeholder)
+- поддержка `ENTITY_CHANGED` для `Branch` через конфигурируемый mapping paths (`integration.eventing.entity-changed-branch-mapping.*`)
 - повторная обработка событий из DLQ с удалением после успешного replay
 - bulk replay DLQ с ограничением по `limit`
 - фильтрация/пагинация списков по `eventType/source/from/to/offset/limit/desc`
@@ -63,6 +64,18 @@ integration:
       enabled: false
       inbound-topic: integration.inbound
       outbound-topic: integration.outbound
+    entity-changed-branch-mapping:
+      enabled: true
+      event-type: ENTITY_CHANGED
+      class-name-paths: ["class", "data.class", "data.entityClass"]
+      accepted-class-names: ["Branch"]
+      branch-id-paths: ["data.entity.id", "data.branch.id", "branchId"]
+      status-paths: ["data.entity.status", "data.state.status", "status"]
+      active-window-paths: ["data.entity.activeWindow", "data.state.activeWindow", "activeWindow"]
+      queue-size-paths: ["data.entity.queueSize", "data.state.queueSize", "queueSize"]
+      updated-at-paths: ["data.entity.updatedAt", "data.state.updatedAt", "updatedAt"]
+      updated-by-paths: ["data.entity.updatedBy", "data.state.updatedBy", "updatedBy"]
+      visit-manager-id-paths: ["meta.visitManagerId", "data.visitManagerId", "targetVisitManagerId"]
 ```
 
 ## Ограничения
