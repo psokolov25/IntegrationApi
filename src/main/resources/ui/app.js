@@ -4,10 +4,17 @@ const state = {
     languages: [],
     translations: {},
     language: localStorage.getItem("integration-ui-lang") || "ru",
+    anonymousMode: localStorage.getItem("integration-ui-anonymous-mode") === "true",
     importPreview: null,
     scriptEditorFontSize: Number(localStorage.getItem("integration-ui-editor-font-size") || "13"),
     debugPresets: JSON.parse(localStorage.getItem("integration-ui-debug-presets") || "[]"),
-    brokerTypes: []
+    brokerTypes: [],
+    activeTab: localStorage.getItem("integration-ui-active-tab") || "eventing",
+    dashboardRaw: {
+        dlq: [],
+        outbox: [],
+        inbox: []
+    }
 };
 
 const el = (id) => document.getElementById(id);
@@ -18,6 +25,9 @@ function setStatus(message) {
 }
 
 function headers(extra = {}) {
+    if (state.anonymousMode) {
+        return {...extra};
+    }
     return state.apiKey
         ? {"X-API-KEY": state.apiKey, ...extra}
         : {...extra};
@@ -77,6 +87,24 @@ function applyI18n() {
     document.querySelectorAll("[data-i18n]").forEach(node => {
         node.textContent = t(node.getAttribute("data-i18n"));
     });
+}
+
+function setupTabs() {
+    const buttons = [...document.querySelectorAll(".tab-btn")];
+    const panels = [...document.querySelectorAll("[data-tab-panel]")];
+    const openTab = (tabId) => {
+        if (!buttons.some(btn => btn.dataset.tabTarget === tabId)) {
+            tabId = "eventing";
+        }
+        state.activeTab = tabId;
+        localStorage.setItem("integration-ui-active-tab", tabId);
+        buttons.forEach(btn => btn.classList.toggle("active", btn.dataset.tabTarget === tabId));
+        panels.forEach(panel => panel.classList.toggle("hidden", panel.dataset.tabPanel !== tabId));
+    };
+    buttons.forEach(button => {
+        button.addEventListener("click", () => openTab(button.dataset.tabTarget));
+    });
+    openTab(state.activeTab);
 }
 
 function setupEditorExperience() {
@@ -155,6 +183,19 @@ function paintStats(stats) {
         `<div class="card"><div class="title">${title}</div><div class="value">${value ?? 0}</div></div>`).join("");
 }
 
+function applyEventSearchFilter() {
+    const query = (el("eventSearchInput")?.value || "").trim().toLowerCase();
+    const filter = (items) => {
+        if (!query) {
+            return items;
+        }
+        return (items || []).filter(item => JSON.stringify(item).toLowerCase().includes(query));
+    };
+    el("dlqView").textContent = JSON.stringify(filter(state.dashboardRaw.dlq), null, 2);
+    el("outboxView").textContent = JSON.stringify(filter(state.dashboardRaw.outbox), null, 2);
+    el("inboxView").textContent = JSON.stringify(filter(state.dashboardRaw.inbox), null, 2);
+}
+
 async function refreshDashboard() {
     const outboxStatus = encodeURIComponent(el("outboxStatusFilterInput")?.value || "");
     const includeSent = el("includeSentOutboxInput")?.checked ? "true" : "false";
@@ -165,9 +206,8 @@ async function refreshDashboard() {
         apiGet("/api/v1/events/inbox?limit=20")
     ]);
     paintStats(stats);
-    el("dlqView").textContent = JSON.stringify(dlq, null, 2);
-    el("outboxView").textContent = JSON.stringify(outbox, null, 2);
-    el("inboxView").textContent = JSON.stringify(inbox, null, 2);
+    state.dashboardRaw = {dlq, outbox, inbox};
+    applyEventSearchFilter();
 }
 
 function parseJsonInput(elementId, label) {
@@ -750,11 +790,21 @@ async function runInboundReaction() {
 
 function init() {
     el("apiKeyInput").value = state.apiKey;
+    el("anonymousModeInput").checked = state.anonymousMode;
+    el("apiKeyInput").disabled = state.anonymousMode;
 
     el("saveApiKeyBtn").onclick = () => {
         state.apiKey = el("apiKeyInput").value.trim();
         localStorage.setItem("integration-ui-api-key", state.apiKey);
         refreshDashboard().then(loadScripts).catch(e => setStatus(`Ошибка refresh: ${e.message}`));
+    };
+    el("anonymousModeInput").onchange = (event) => {
+        state.anonymousMode = !!event.target.checked;
+        localStorage.setItem("integration-ui-anonymous-mode", String(state.anonymousMode));
+        el("apiKeyInput").disabled = state.anonymousMode;
+        setStatus(state.anonymousMode
+            ? t("anonymousEnabledHint")
+            : t("anonymousDisabledHint"));
     };
     el("languageSelect").onchange = (event) => {
         state.language = event.target.value;
@@ -762,6 +812,7 @@ function init() {
         applyI18n();
     };
     el("refreshStatsBtn").onclick = () => refreshDashboard().then(() => setStatus("Stats updated")).catch(e => setStatus(`Ошибка stats: ${e.message}`));
+    el("eventSearchInput").addEventListener("input", () => applyEventSearchFilter());
     el("outboxStatusFilterInput").onchange = () => refreshDashboard().catch(e => setStatus(`Ошибка outbox filter: ${e.message}`));
     el("includeSentOutboxInput").onchange = () => refreshDashboard().catch(e => setStatus(`Ошибка include sent: ${e.message}`));
     el("flushOutboxBtn").onclick = async () => {
@@ -892,7 +943,13 @@ function init() {
         .then(() => refreshDashboard())
         .then(() => loadScripts())
         .then(() => renderDebugPresets())
+        .then(() => setupTabs())
         .then(() => setupEditorExperience())
+        .then(() => {
+            if (state.anonymousMode) {
+                setStatus(t("anonymousEnabledHint"));
+            }
+        })
         .catch(e => setStatus(`Ошибка инициализации: ${e.message}`));
 }
 

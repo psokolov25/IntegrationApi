@@ -67,6 +67,32 @@ button:hover { border-color: #11a19a; background: rgba(17, 153, 142, 0.2); }
     gap: 16px;
 }
 
+.tabs-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    position: sticky;
+    top: 10px;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+}
+
+.tab-btn {
+    border-radius: 999px;
+    padding: 8px 14px;
+    background: rgba(24, 93, 105, 0.1);
+}
+
+.tab-btn.active {
+    background: linear-gradient(90deg, rgba(40, 93, 105, 0.94), rgba(38, 154, 146, 0.94));
+    color: #fff;
+    border-color: transparent;
+}
+
+.tab-panel.hidden {
+    display: none;
+}
+
 .panel {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -133,6 +159,11 @@ button:hover { border-color: #11a19a; background: rgba(17, 153, 142, 0.2); }
     margin: 6px 0;
 }
 
+.compact-checkbox {
+    margin: 0;
+    font-size: 12px;
+}
+
 .scripts-checklist {
     max-height: 240px;
     overflow: auto;
@@ -146,6 +177,12 @@ button:hover { border-color: #11a19a; background: rgba(17, 153, 142, 0.2); }
 .script-type { color: var(--muted); }
 .file-input-label input { display: block; margin-top: 4px; }
 .status-panel { font-size: 14px; }
+.ux-list {
+    margin: 0;
+    padding-left: 18px;
+    display: grid;
+    gap: 8px;
+}
 .editor-status {
     min-height: auto;
     padding: 6px 10px;

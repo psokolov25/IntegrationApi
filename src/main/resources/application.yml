@@ -15,6 +15,10 @@ micronaut:
 
 integration:
   security-mode: API_KEY
+  anonymous-access:
+    enabled: false
+    subject-id: anonymous-debug
+    permissions: ["queue-view", "queue-call", "queue-aggregate", "metrics-view", "event-process", "branch-state-view", "branch-state-manage", "programmable-script-manage", "programmable-script-execute"]
   internal-signing-key: dev-signing-key
   internal-clients:
     - client-id: integration-admin

@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test"
+    "test": "playwright test",
+    "screenshot": "playwright test screenshot.spec.mjs --project chromium-desktop"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.1"
   }
 }
-

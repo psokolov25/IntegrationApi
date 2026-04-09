@@ -13,12 +13,15 @@ test('ui dashboard loads without console errors', async ({page}) => {
     await page.goto('/ui/');
     await expect(page.locator('h1')).toContainText(/Integration\s*API/i);
     await expect(page.locator('h2').first()).toBeVisible();
+    await page.click('[data-tab-target="scripts"]');
     await expect(page.locator('#scriptBodyInput')).toBeVisible();
+    await expect(page.locator('#anonymousModeInput')).toBeVisible();
     expect(consoleErrors, `Console errors:\n${consoleErrors.join('\n')}`).toEqual([]);
 });
 
 test('ui supports script editor draft and debug payload editing', async ({page}) => {
     await page.goto('/ui/');
+    await page.click('[data-tab-target="scripts"]');
     await page.click('#newScriptBtn');
     await page.fill('#scriptIdInput', 'ui-draft-script');
     await page.fill('#scriptDescriptionInput', 'черновик для smoke-теста');
@@ -28,10 +31,14 @@ test('ui supports script editor draft and debug payload editing', async ({page})
     await expect(page.locator('#scriptBodyInput')).toHaveValue(/ui-test/);
     await expect(page.locator('#debugPayloadInput')).toHaveValue('{"sample":true}');
     await expect(page.locator('#debugContextInput')).toHaveValue('{"source":"ui-e2e","channel":"playwright"}');
+    await page.click('[data-tab-target="templates"]');
     await expect(page.locator('#snapshotExportBtn')).toBeVisible();
+    await page.click('[data-tab-target="eventing"]');
     await expect(page.locator('#replayDlqBtn')).toBeVisible();
+    await page.click('[data-tab-target="scripts"]');
     await expect(page.locator('#formatScriptBtn')).toBeVisible();
     await expect(page.locator('#wordWrapInput')).toBeChecked();
+    await page.click('[data-tab-target="connectors"]');
     await expect(page.locator('#loadConnectorsBtn')).toBeVisible();
     await expect(page.locator('#invokeRestBtn')).toBeVisible();
     await expect(page.locator('#loadBrokerTypesBtn')).toBeVisible();

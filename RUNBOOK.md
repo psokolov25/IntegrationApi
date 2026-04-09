@@ -98,6 +98,10 @@
 - Проверить `integration.eventing.entity-changed-branch-mapping.event-type` и соответствие `accepted-class-names` данным VisitManager.
 - При изменении payload `ENTITY_CHANGED` актуализировать lists полей `*-paths` в `entity-changed-branch-mapping` (без пересборки IntegrationAPI, если используется внешний конфиг/Groovy-скрипт конфигурации).
 - Проверить `integration.security-mode` и permissions (`event-process` для eventing API).
+- Для режима отладки без ключей проверить `integration.anonymous-access.enabled=true`:
+  - субъект берётся из `integration.anonymous-access.subject-id`;
+  - полный доступ задаётся через `integration.anonymous-access.permissions`;
+  - использовать только в dev/test окружениях.
 - Для Groovy script runtime проверить права `programmable-script-manage` и `programmable-script-execute`.
 - Проверить конфигурацию Redis-хранилища скриптов `integration.programmable-api.script-storage.redis.*`.
 - Проверить реестр внешних REST сервисов `integration.programmable-api.external-rest-services[*]`.
