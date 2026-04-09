@@ -19,7 +19,10 @@ public class LoggingMessageBusAdapter implements CustomerMessageBusAdapter {
     private static final List<String> SUPPORTED_TYPES = List.of(
             "LOGGING", "KAFKA", "DATABUS", "RABBITMQ", "NATS",
             "PULSAR", "ACTIVEMQ", "AZURE_SERVICE_BUS", "AZURE_EVENT_HUB",
-            "REDPANDA", "SQS", "MQTT", "AWS_SNS"
+            "REDPANDA", "SQS", "MQTT", "AWS_SNS", "IBM_MQ",
+            "REDIS_STREAM", "GOOGLE_PUBSUB", "ROCKETMQ",
+            "AMQP_1_0", "SOLACE", "APACHE_ARTEMIS",
+            "AWS_KINESIS", "NSQ"
     );
 
     @Override

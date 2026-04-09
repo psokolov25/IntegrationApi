@@ -5,7 +5,9 @@ const state = {
     translations: {},
     language: localStorage.getItem("integration-ui-lang") || "ru",
     importPreview: null,
-    scriptEditorFontSize: Number(localStorage.getItem("integration-ui-editor-font-size") || "13")
+    scriptEditorFontSize: Number(localStorage.getItem("integration-ui-editor-font-size") || "13"),
+    debugPresets: JSON.parse(localStorage.getItem("integration-ui-debug-presets") || "[]"),
+    brokerTypes: []
 };
 
 const el = (id) => document.getElementById(id);
@@ -154,14 +156,18 @@ function paintStats(stats) {
 }
 
 async function refreshDashboard() {
-    const [stats, dlq, outbox] = await Promise.all([
+    const outboxStatus = encodeURIComponent(el("outboxStatusFilterInput")?.value || "");
+    const includeSent = el("includeSentOutboxInput")?.checked ? "true" : "false";
+    const [stats, dlq, outbox, inbox] = await Promise.all([
         apiGet("/api/v1/events/stats"),
         apiGet("/api/v1/events/dlq?limit=20"),
-        apiGet("/api/v1/events/outbox?limit=20")
+        apiGet(`/api/v1/events/outbox?limit=20&status=${outboxStatus}&includeSent=${includeSent}`),
+        apiGet("/api/v1/events/inbox?limit=20")
     ]);
     paintStats(stats);
     el("dlqView").textContent = JSON.stringify(dlq, null, 2);
     el("outboxView").textContent = JSON.stringify(outbox, null, 2);
+    el("inboxView").textContent = JSON.stringify(inbox, null, 2);
 }
 
 function parseJsonInput(elementId, label) {
@@ -187,6 +193,158 @@ function fillScriptForm(script) {
 function renderScriptsChecklist() {
     el("scriptsChecklist").innerHTML = state.scripts.map(s =>
         `<label class="checkbox-row"><input type="checkbox" data-script-id="${s.scriptId}"/> ${s.scriptId} <span class="script-type">(${s.type})</span></label>`).join("");
+}
+
+const SCRIPT_SNIPPETS = {
+    branchStatus: `def branchId = payload.branchId ?: params.branchId
+if (!branchId) {
+    return [ok: false, reason: "branchId is required"]
+}
+def nextState = payload.state ?: "UNKNOWN"
+return [
+    ok: true,
+    eventType: "VISIT_BRANCH_STATE_UPDATED",
+    meta: [source: context.source ?: "ui-editor"],
+    data: [branchId: branchId, state: nextState]
+]`,
+    busAck: `def eventId = payload.eventId ?: java.util.UUID.randomUUID().toString()
+return [
+    ack: true,
+    eventId: eventId,
+    topic: context.topic ?: "customer.branch.events",
+    processedAt: java.time.Instant.now().toString()
+]`,
+    restRoute: `def customerId = payload.customerId ?: params.customerId
+if (!customerId) throw new IllegalArgumentException("customerId required")
+return [
+    operation: "REST_INVOKE",
+    serviceId: params.serviceId ?: "customer-crm",
+    method: "POST",
+    path: "/api/v1/customers/${customerId}/sync",
+    body: [customerId: customerId, snapshot: payload]
+]`
+};
+
+function insertSnippet() {
+    const key = el("snippetSelect").value;
+    if (!key || !SCRIPT_SNIPPETS[key]) {
+        return;
+    }
+    const editor = el("scriptBodyInput");
+    const snippet = SCRIPT_SNIPPETS[key];
+    const prefix = editor.value.trim().length === 0 ? "" : "\n\n";
+    editor.value = `${editor.value}${prefix}${snippet}`.trimStart();
+    renderExecutionParamsFromScript();
+    updateEditorCursorInfo();
+    setStatus(`Snippet inserted: ${key}`);
+}
+
+function renderDebugPresets() {
+    const select = el("debugPresetSelect");
+    select.innerHTML = [`<option value="">${t("chooseDebugPreset")}</option>`]
+        .concat(state.debugPresets.map(item => `<option value="${item.id}">${item.id}</option>`))
+        .join("");
+}
+
+function renderDebugHistoryOptions(entries) {
+    const select = el("debugHistorySelect");
+    const options = [`<option value="">${t("chooseDebugHistory")}</option>`]
+        .concat(entries.map((item, idx) => `<option value="${idx}">${item.scriptId} | ${item.startedAt} | ${item.ok ? "OK" : "ERR"}</option>`));
+    select.innerHTML = options.join("");
+}
+
+function saveDebugPreset() {
+    const scriptId = el("scriptIdInput").value.trim();
+    if (!scriptId) {
+        throw new Error("Для сохранения preset требуется scriptId");
+    }
+    const preset = {
+        id: `${scriptId}-${Date.now()}`,
+        scriptId,
+        payload: parseJsonInput("debugPayloadInput", "Payload"),
+        context: parseJsonInput("debugContextInput", "Context"),
+        parameters: collectExecutionParameterValues()
+    };
+    state.debugPresets = [preset, ...state.debugPresets].slice(0, 20);
+    localStorage.setItem("integration-ui-debug-presets", JSON.stringify(state.debugPresets));
+    renderDebugPresets();
+    el("debugPresetSelect").value = preset.id;
+    setStatus(`Debug preset сохранен: ${preset.id}`);
+}
+
+function loadDebugPreset() {
+    const presetId = el("debugPresetSelect").value;
+    const preset = state.debugPresets.find(item => item.id === presetId);
+    if (!preset) {
+        throw new Error("Preset не найден");
+    }
+    el("scriptIdInput").value = preset.scriptId;
+    el("debugPayloadInput").value = JSON.stringify(preset.payload || {}, null, 2);
+    el("debugContextInput").value = JSON.stringify(preset.context || {}, null, 2);
+    const values = preset.parameters || {};
+    el("executionParamsGrid").innerHTML = Object.entries(values).map(([name, value]) => `
+      <label>${name}
+        <input data-exec-param="${name}" value="${value ?? ""}" />
+      </label>
+    `).join("");
+    setStatus(`Debug preset загружен: ${presetId}`);
+}
+
+function setAllScriptsChecked(checked) {
+    el("scriptsChecklist").querySelectorAll("input[data-script-id]").forEach(input => {
+        input.checked = checked;
+    });
+}
+
+async function loadDebugHistory() {
+    const scriptId = el("scriptIdInput").value.trim();
+    const query = scriptId ? `?scriptId=${encodeURIComponent(scriptId)}&limit=50` : "?limit=50";
+    const entries = await apiGet(`/api/v1/program/scripts/debug/history${query}`);
+    renderDebugHistoryOptions(entries);
+    el("debugHistoryView").textContent = JSON.stringify(entries, null, 2);
+}
+
+async function clearDebugHistory() {
+    const scriptId = el("scriptIdInput").value.trim();
+    const query = scriptId ? `?scriptId=${encodeURIComponent(scriptId)}` : "";
+    const result = await apiDelete(`/api/v1/program/scripts/debug/history${query}`);
+    el("debugHistorySelect").innerHTML = `<option value="">${t("chooseDebugHistory")}</option>`;
+    el("debugHistoryView").textContent = JSON.stringify(result, null, 2);
+    setStatus(`Debug history очищена: ${result.removed ?? 0}`);
+}
+
+async function replayLastDebug() {
+    const scriptId = el("scriptIdInput").value.trim();
+    if (!scriptId) {
+        throw new Error("Укажите scriptId для replay last debug");
+    }
+    const result = await apiPost(`/api/v1/program/scripts/${encodeURIComponent(scriptId)}/debug/replay-last`, {});
+    el("debugResultView").textContent = JSON.stringify(result, null, 2);
+    await loadDebugHistory();
+}
+
+function showSelectedDebugHistory() {
+    const raw = el("debugHistoryView").textContent.trim();
+    if (!raw) {
+        return;
+    }
+    const selected = el("debugHistorySelect").value;
+    if (selected === "") {
+        return;
+    }
+    const entries = JSON.parse(raw);
+    const item = entries[Number(selected)];
+    if (!item) {
+        return;
+    }
+    el("debugPayloadInput").value = JSON.stringify(item.payload || {}, null, 2);
+    el("debugContextInput").value = JSON.stringify(item.context || {}, null, 2);
+    const params = item.parameters || {};
+    el("executionParamsGrid").innerHTML = Object.entries(params).map(([name, value]) => `
+      <label>${name}
+        <input data-exec-param="${name}" value="${value ?? ""}" />
+      </label>
+    `).join("");
 }
 
 async function loadScripts() {
@@ -266,6 +424,43 @@ async function validateScript() {
     setStatus(result.ok ? "Script validation OK" : `Script validation error: ${result.message}`);
 }
 
+function analyzeScriptBody() {
+    const body = el("scriptBodyInput").value || "";
+    const stack = [];
+    const pairs = new Map([["}", "{"], ["]", "["], [")", "("]]);
+    let line = 1;
+    const issues = [];
+    for (const ch of body) {
+        if (ch === "\n") {
+            line++;
+            continue;
+        }
+        if (["{", "[", "("].includes(ch)) {
+            stack.push({ch, line});
+            continue;
+        }
+        if (pairs.has(ch)) {
+            const last = stack.pop();
+            if (!last || last.ch !== pairs.get(ch)) {
+                issues.push(`Несоответствие скобок на строке ${line}: '${ch}'`);
+            }
+        }
+    }
+    while (stack.length > 0) {
+        const left = stack.pop();
+        issues.push(`Незакрытая скобка '${left.ch}' на строке ${left.line}`);
+    }
+    const params = extractScriptParams(body);
+    const report = {
+        ok: issues.length === 0,
+        lineCount: body.split("\n").length,
+        params,
+        issues
+    };
+    el("debugResultView").textContent = JSON.stringify(report, null, 2);
+    setStatus(report.ok ? "Script analysis OK" : `Script analysis issues: ${issues.length}`);
+}
+
 async function debugScript() {
     const scriptId = el("scriptIdInput").value.trim();
     const payloadText = el("debugPayloadInput").value.trim() || "{}";
@@ -328,6 +523,14 @@ async function previewTemplate() {
     el("templateMetaView").textContent = JSON.stringify(preview, null, 2);
     renderTemplateParameters(preview);
     setStatus(`Template preview: ${preview.templateId}`);
+}
+
+async function validateTemplateArchive() {
+    const form = new FormData();
+    form.append("archive", selectedTemplateFile());
+    const result = await apiPostMultipart("/api/v1/program/templates/import/validate", form);
+    el("templateMetaView").textContent = JSON.stringify(result, null, 2);
+    setStatus(result.ok ? "Template archive validation OK" : "Template archive validation: warnings");
 }
 
 function collectImportParameterValues() {
@@ -410,6 +613,25 @@ async function clearDlq() {
     setStatus(`DLQ очищен: ${result.removed ?? 0}`);
 }
 
+async function clearInboxByStatus() {
+    const status = el("inboxStatusInput").value || "";
+    const result = await apiDelete(`/api/v1/events/inbox?status=${encodeURIComponent(status)}`);
+    el("eventOpsResultView").textContent = JSON.stringify(result, null, 2);
+    await refreshDashboard();
+    setStatus(`Inbox очищен: ${result.removed ?? 0}`);
+}
+
+async function retryOutboxEventById() {
+    const eventId = el("retryOutboxEventIdInput").value.trim();
+    if (!eventId) {
+        throw new Error("Укажите eventId для retry outbox");
+    }
+    const result = await apiPost(`/api/v1/events/outbox/retry/${encodeURIComponent(eventId)}`, {});
+    el("eventOpsResultView").textContent = JSON.stringify(result, null, 2);
+    await refreshDashboard();
+    setStatus(`Outbox retry result: ${result.status}`);
+}
+
 async function exportEventSnapshot() {
     const snapshot = await apiGet("/api/v1/events/export");
     el("snapshotPayloadInput").value = JSON.stringify(snapshot, null, 2);
@@ -451,10 +673,42 @@ async function loadConnectorsCatalog() {
     setStatus("Каталог коннекторов загружен");
 }
 
+async function loadConnectorsHealth() {
+    const result = await apiGet("/api/v1/program/connectors/health");
+    el("connectorsCatalogView").textContent = JSON.stringify(result, null, 2);
+    setStatus(result.ok ? "Connectors health OK" : "Connectors health has warnings");
+}
+
 async function loadSupportedBrokerTypes() {
     const result = await apiGet("/api/v1/program/connectors/broker-types");
     el("brokerTypesView").textContent = JSON.stringify(result, null, 2);
+    state.brokerTypes = result.supportedBrokerTypes || [];
     setStatus("Список поддерживаемых broker types загружен");
+}
+
+function applyFirstBrokerTypeToForm() {
+    if (!state.brokerTypes || state.brokerTypes.length === 0) {
+        throw new Error("Сначала загрузите broker types");
+    }
+    const first = state.brokerTypes[0];
+    el("brokerIdInput").value = `broker-${first.toLowerCase()}`;
+    el("brokerTopicInput").value = "customer.events.generic";
+    const headers = parseJsonInput("brokerHeadersInput", "Bus headers");
+    headers["x-broker-type"] = first;
+    el("brokerHeadersInput").value = JSON.stringify(headers, null, 2);
+    setStatus(`В форму publish подставлен broker type: ${first}`);
+}
+
+function fillInboundTemplate() {
+    el("inboundBrokerIdInput").value = el("brokerIdInput").value || "customer-databus";
+    el("inboundTopicInput").value = "customer.branch.events";
+    el("inboundPayloadInput").value = JSON.stringify({
+        eventType: "VISIT_BRANCH_STATE_UPDATED",
+        meta: {source: "ui-template"},
+        data: {branchId: "BR-100", state: "OPEN"}
+    }, null, 2);
+    el("inboundHeadersInput").value = JSON.stringify({"x-replay": "false"}, null, 2);
+    setStatus("Inbound шаблон заполнен");
 }
 
 async function invokeExternalRest() {
@@ -508,6 +762,8 @@ function init() {
         applyI18n();
     };
     el("refreshStatsBtn").onclick = () => refreshDashboard().then(() => setStatus("Stats updated")).catch(e => setStatus(`Ошибка stats: ${e.message}`));
+    el("outboxStatusFilterInput").onchange = () => refreshDashboard().catch(e => setStatus(`Ошибка outbox filter: ${e.message}`));
+    el("includeSentOutboxInput").onchange = () => refreshDashboard().catch(e => setStatus(`Ошибка include sent: ${e.message}`));
     el("flushOutboxBtn").onclick = async () => {
         const limit = Number(el("flushOutboxLimitInput").value || "100");
         const result = await apiPost(`/api/v1/events/outbox/flush?limit=${encodeURIComponent(limit)}`, {});
@@ -515,11 +771,13 @@ function init() {
         await refreshDashboard();
         setStatus(`Outbox flushed: ${result.length ?? 0}`);
     };
+    el("retryOutboxBtn").onclick = () => retryOutboxEventById().catch(e => setStatus(`Ошибка retry outbox: ${e.message}`));
     el("recoverInboxBtn").onclick = async () => {
         const result = await apiPost("/api/v1/events/inbox/recover-stale", {});
         await refreshDashboard();
         setStatus(`Recovered stale inbox: ${result.recovered ?? 0}`);
     };
+    el("clearInboxBtn").onclick = () => clearInboxByStatus().catch(e => setStatus(`Ошибка clear inbox: ${e.message}`));
     el("loadScriptBtn").onclick = () => loadSelectedScript().catch(e => setStatus(`Ошибка load: ${e.message}`));
     el("newScriptBtn").onclick = () => fillScriptForm({
         scriptId: "",
@@ -533,6 +791,13 @@ function init() {
     el("scriptBodyInput").addEventListener("input", () => updateEditorCursorInfo());
     el("saveScriptBtn").onclick = () => saveScript().catch(e => setStatus(`Ошибка save: ${e.message}`));
     el("validateScriptBtn").onclick = () => validateScript().catch(e => setStatus(`Ошибка validate: ${e.message}`));
+    el("analyzeScriptBtn").onclick = () => {
+        try {
+            analyzeScriptBody();
+        } catch (e) {
+            setStatus(`Ошибка analyze script: ${e.message}`);
+        }
+    };
     el("debugScriptBtn").onclick = () => debugScript().catch(e => setStatus(`Ошибка debug: ${e.message}`));
     el("executeScriptBtn").onclick = () => executeScriptAdvanced().catch(e => setStatus(`Ошибка execute: ${e.message}`));
     el("replayDlqBtn").onclick = () => replayDlqBulk().catch(e => setStatus(`Ошибка replay DLQ: ${e.message}`));
@@ -546,6 +811,7 @@ function init() {
     el("snapshotImportBtn").onclick = () => runSnapshotOperation("import").catch(e => setStatus(`Ошибка snapshot import: ${e.message}`));
     el("loadConnectorsBtn").onclick = () => loadConnectorsCatalog().catch(e => setStatus(`Ошибка connectors catalog: ${e.message}`));
     el("loadBrokerTypesBtn").onclick = () => loadSupportedBrokerTypes().catch(e => setStatus(`Ошибка broker types: ${e.message}`));
+    el("connectorsHealthBtn").onclick = () => loadConnectorsHealth().catch(e => setStatus(`Ошибка connectors health: ${e.message}`));
     el("invokeRestBtn").onclick = () => invokeExternalRest().catch(e => setStatus(`Ошибка invoke REST: ${e.message}`));
     el("publishBusBtn").onclick = () => publishToBus().catch(e => setStatus(`Ошибка publish bus: ${e.message}`));
     el("runInboundReactionBtn").onclick = () => runInboundReaction().catch(e => setStatus(`Ошибка inbound reaction: ${e.message}`));
@@ -571,16 +837,61 @@ function init() {
     };
     el("fontIncreaseBtn").onclick = () => setEditorFontSize(1);
     el("fontDecreaseBtn").onclick = () => setEditorFontSize(-1);
+    el("insertSnippetBtn").onclick = () => insertSnippet();
+    el("saveDebugPresetBtn").onclick = () => {
+        try {
+            saveDebugPreset();
+        } catch (e) {
+            setStatus(`Ошибка save preset: ${e.message}`);
+        }
+    };
+    el("loadDebugPresetBtn").onclick = () => {
+        try {
+            loadDebugPreset();
+        } catch (e) {
+            setStatus(`Ошибка load preset: ${e.message}`);
+        }
+    };
+    el("loadDebugHistoryBtn").onclick = () => loadDebugHistory().catch(e => setStatus(`Ошибка debug history: ${e.message}`));
+    el("clearDebugHistoryBtn").onclick = () => clearDebugHistory().catch(e => setStatus(`Ошибка clear debug history: ${e.message}`));
+    el("replayLastDebugBtn").onclick = () => replayLastDebug().catch(e => setStatus(`Ошибка replay last debug: ${e.message}`));
+    el("debugHistorySelect").onchange = () => {
+        try {
+            showSelectedDebugHistory();
+        } catch (e) {
+            setStatus(`Ошибка show debug history: ${e.message}`);
+        }
+    };
     el("wordWrapInput").onchange = () => {
         el("scriptBodyInput").style.whiteSpace = el("wordWrapInput").checked ? "pre-wrap" : "pre";
     };
     el("previewTemplateBtn").onclick = () => previewTemplate().catch(e => setStatus(`Ошибка preview: ${e.message}`));
+    el("validateTemplateBtn").onclick = () => validateTemplateArchive().catch(e => setStatus(`Ошибка validate archive: ${e.message}`));
     el("importTemplateBtn").onclick = () => importTemplate().catch(e => setStatus(`Ошибка import: ${e.message}`));
+    el("formatExportDefaultsBtn").onclick = () => {
+        try {
+            formatJsonTextarea("exportDefaultsInput", "Export defaults");
+            setStatus("Export defaults JSON отформатирован");
+        } catch (e) {
+            setStatus(`Ошибка format export defaults: ${e.message}`);
+        }
+    };
+    el("checkAllScriptsBtn").onclick = () => setAllScriptsChecked(true);
+    el("clearAllScriptsBtn").onclick = () => setAllScriptsChecked(false);
     el("exportTemplateBtn").onclick = () => exportTemplate().catch(e => setStatus(`Ошибка export: ${e.message}`));
+    el("applyFirstBrokerTypeBtn").onclick = () => {
+        try {
+            applyFirstBrokerTypeToForm();
+        } catch (e) {
+            setStatus(`Ошибка apply broker type: ${e.message}`);
+        }
+    };
+    el("fillInboundTemplateBtn").onclick = () => fillInboundTemplate();
 
     loadI18n()
         .then(() => refreshDashboard())
         .then(() => loadScripts())
+        .then(() => renderDebugPresets())
         .then(() => setupEditorExperience())
         .catch(e => setStatus(`Ошибка инициализации: ${e.message}`));
 }

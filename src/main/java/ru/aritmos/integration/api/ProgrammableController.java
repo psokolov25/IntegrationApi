@@ -15,6 +15,7 @@ import io.micronaut.http.annotation.Part;
 import io.micronaut.http.annotation.PathVariable;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.Put;
+import io.micronaut.http.annotation.QueryValue;
 import io.micronaut.http.multipart.CompletedFileUpload;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -36,6 +37,7 @@ import ru.aritmos.integration.programming.ExternalRestClient;
 import ru.aritmos.integration.programming.GroovyScriptService;
 import ru.aritmos.integration.programming.IntegrationTemplateArchiveService;
 import ru.aritmos.integration.programming.ProgrammableEndpointService;
+import ru.aritmos.integration.programming.ScriptDebugHistoryService;
 import ru.aritmos.integration.security.RequestSecurityContext;
 import ru.aritmos.integration.security.core.AuthorizationService;
 
@@ -61,6 +63,7 @@ public class ProgrammableController {
     private final IntegrationGatewayConfiguration configuration;
     private final ObjectMapper objectMapper;
     private final AuthorizationService authorizationService;
+    private final ScriptDebugHistoryService scriptDebugHistoryService;
 
     public ProgrammableController(ProgrammableEndpointService programmableEndpointService,
                                   GroovyScriptService groovyScriptService,
@@ -70,7 +73,8 @@ public class ProgrammableController {
                                   List<CustomerMessageBusAdapter> messageBusAdapters,
                                   IntegrationGatewayConfiguration configuration,
                                   ObjectMapper objectMapper,
-                                  AuthorizationService authorizationService) {
+                                  AuthorizationService authorizationService,
+                                  ScriptDebugHistoryService scriptDebugHistoryService) {
         this.programmableEndpointService = programmableEndpointService;
         this.groovyScriptService = groovyScriptService;
         this.templateArchiveService = templateArchiveService;
@@ -80,6 +84,7 @@ public class ProgrammableController {
         this.configuration = configuration;
         this.objectMapper = objectMapper;
         this.authorizationService = authorizationService;
+        this.scriptDebugHistoryService = scriptDebugHistoryService;
     }
 
     @Post("/{endpointId}")
@@ -188,8 +193,23 @@ public class ProgrammableController {
                 .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
         Instant startedAt = Instant.now();
         long started = System.currentTimeMillis();
+        Map<String, Object> payloadMap = payload == null
+                ? Map.of()
+                : objectMapper.convertValue(payload, new TypeReference<>() {
+                });
         try {
             Object result = groovyScriptService.executeAdvanced(scriptId, payload, Map.of(), Map.of(), subject);
+            scriptDebugHistoryService.record(new ScriptDebugHistoryService.DebugEntry(
+                    scriptId,
+                    startedAt,
+                    System.currentTimeMillis() - started,
+                    true,
+                    result,
+                    null,
+                    payloadMap,
+                    Map.of(),
+                    Map.of()
+            ));
             return Map.of(
                     "ok", true,
                     "scriptId", scriptId,
@@ -198,6 +218,17 @@ public class ProgrammableController {
                     "result", result
             );
         } catch (Exception ex) {
+            scriptDebugHistoryService.record(new ScriptDebugHistoryService.DebugEntry(
+                    scriptId,
+                    startedAt,
+                    System.currentTimeMillis() - started,
+                    false,
+                    null,
+                    ex.getMessage(),
+                    payloadMap,
+                    Map.of(),
+                    Map.of()
+            ));
             return Map.of(
                     "ok", false,
                     "scriptId", scriptId,
@@ -217,29 +248,141 @@ public class ProgrammableController {
                 .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
         Instant startedAt = Instant.now();
         long started = System.currentTimeMillis();
+        Map<String, Object> parameters = payload == null || payload.parameters() == null ? Map.of() : payload.parameters();
+        Map<String, Object> context = payload == null || payload.context() == null ? Map.of() : payload.context();
+        Map<String, Object> safePayload = payload == null || payload.payload() == null
+                ? Map.of()
+                : objectMapper.convertValue(payload.payload(), new TypeReference<>() {
+                });
         try {
             Object result = groovyScriptService.executeAdvanced(
                     scriptId,
                     payload == null ? null : payload.payload(),
-                    payload == null || payload.parameters() == null ? Map.of() : payload.parameters(),
-                    payload == null || payload.context() == null ? Map.of() : payload.context(),
+                    parameters,
+                    context,
                     subject
             );
+            scriptDebugHistoryService.record(new ScriptDebugHistoryService.DebugEntry(
+                    scriptId,
+                    startedAt,
+                    System.currentTimeMillis() - started,
+                    true,
+                    result,
+                    null,
+                    safePayload,
+                    parameters,
+                    context
+            ));
             return Map.of(
                     "ok", true,
                     "scriptId", scriptId,
                     "startedAt", startedAt.toString(),
                     "durationMs", System.currentTimeMillis() - started,
-                    "parameters", payload == null || payload.parameters() == null ? Map.of() : payload.parameters(),
+                    "parameters", parameters,
                     "result", result
             );
         } catch (Exception ex) {
+            scriptDebugHistoryService.record(new ScriptDebugHistoryService.DebugEntry(
+                    scriptId,
+                    startedAt,
+                    System.currentTimeMillis() - started,
+                    false,
+                    null,
+                    ex.getMessage(),
+                    safePayload,
+                    parameters,
+                    context
+            ));
             return Map.of(
                     "ok", false,
                     "scriptId", scriptId,
                     "startedAt", startedAt.toString(),
                     "durationMs", System.currentTimeMillis() - started,
-                    "parameters", payload == null || payload.parameters() == null ? Map.of() : payload.parameters(),
+                    "parameters", parameters,
+                    "error", ex.getMessage()
+            );
+        }
+    }
+
+    @Get("/scripts/debug/history")
+    @Operation(summary = "История debug запусков", description = "Возвращает in-memory историю debug/execute запусков скриптов для IDE-панели.")
+    public List<ScriptDebugHistoryService.DebugEntry> debugHistory(HttpRequest<?> request,
+                                                                   @QueryValue(defaultValue = "") String scriptId,
+                                                                   @QueryValue(defaultValue = "50") int limit) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return scriptDebugHistoryService.list(scriptId, limit);
+    }
+
+    @Delete("/scripts/debug/history")
+    @Operation(summary = "Очистить историю debug", description = "Очищает всю debug-историю или только по конкретному scriptId.")
+    public Map<String, Object> clearDebugHistory(HttpRequest<?> request,
+                                                 @QueryValue(defaultValue = "") String scriptId) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-manage");
+        int removed = scriptDebugHistoryService.clear(scriptId);
+        return Map.of("removed", removed, "scriptId", scriptId);
+    }
+
+    @Post("/scripts/{scriptId}/debug/replay-last")
+    @Operation(summary = "Повторить последний debug-запуск", description = "Повторно запускает скрипт с payload/parameters/context из последней debug-записи.")
+    public Map<String, Object> replayLastDebug(HttpRequest<?> request,
+                                               @PathVariable String scriptId) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        ScriptDebugHistoryService.DebugEntry entry = scriptDebugHistoryService.latest(scriptId);
+        if (entry == null) {
+            throw new IllegalArgumentException("Нет debug history для scriptId: " + scriptId);
+        }
+        Instant startedAt = Instant.now();
+        long started = System.currentTimeMillis();
+        JsonNode payload = objectMapper.valueToTree(entry.payload() == null ? Map.of() : entry.payload());
+        try {
+            Object result = groovyScriptService.executeAdvanced(
+                    scriptId,
+                    payload,
+                    entry.parameters() == null ? Map.of() : entry.parameters(),
+                    entry.context() == null ? Map.of() : entry.context(),
+                    subject
+            );
+            scriptDebugHistoryService.record(new ScriptDebugHistoryService.DebugEntry(
+                    scriptId,
+                    startedAt,
+                    System.currentTimeMillis() - started,
+                    true,
+                    result,
+                    null,
+                    entry.payload() == null ? Map.of() : entry.payload(),
+                    entry.parameters() == null ? Map.of() : entry.parameters(),
+                    entry.context() == null ? Map.of() : entry.context()
+            ));
+            return Map.of(
+                    "ok", true,
+                    "scriptId", scriptId,
+                    "startedAt", startedAt.toString(),
+                    "durationMs", System.currentTimeMillis() - started,
+                    "result", result
+            );
+        } catch (Exception ex) {
+            scriptDebugHistoryService.record(new ScriptDebugHistoryService.DebugEntry(
+                    scriptId,
+                    startedAt,
+                    System.currentTimeMillis() - started,
+                    false,
+                    null,
+                    ex.getMessage(),
+                    entry.payload() == null ? Map.of() : entry.payload(),
+                    entry.parameters() == null ? Map.of() : entry.parameters(),
+                    entry.context() == null ? Map.of() : entry.context()
+            ));
+            return Map.of(
+                    "ok", false,
+                    "scriptId", scriptId,
+                    "startedAt", startedAt.toString(),
+                    "durationMs", System.currentTimeMillis() - started,
                     "error", ex.getMessage()
             );
         }
@@ -327,6 +470,37 @@ public class ProgrammableController {
         return Map.of("supportedBrokerTypes", supportedBrokerTypes());
     }
 
+    @Get("/connectors/health")
+    @Operation(summary = "Проверка здоровья коннекторов", description = "Возвращает lightweight диагностику конфигурации REST/брокер коннекторов.")
+    public Map<String, Object> connectorsHealth(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        var rest = configuration.getProgrammableApi().getExternalRestServices().stream()
+                .map(item -> Map.of(
+                        "id", item.getId(),
+                        "ok", item.getBaseUrl() != null && !item.getBaseUrl().isBlank(),
+                        "baseUrl", item.getBaseUrl() == null ? "" : item.getBaseUrl()
+                ))
+                .toList();
+        var brokers = configuration.getProgrammableApi().getMessageBrokers().stream()
+                .map(item -> Map.of(
+                        "id", item.getId(),
+                        "type", item.getType(),
+                        "enabled", item.isEnabled(),
+                        "adapterAvailable", messageBusAdapters.stream().anyMatch(adapter -> adapter.supports(item.getType()))
+                ))
+                .toList();
+        boolean allOk = rest.stream().allMatch(item -> Boolean.TRUE.equals(item.get("ok")))
+                && brokers.stream().allMatch(item -> !Boolean.TRUE.equals(item.get("enabled")) || Boolean.TRUE.equals(item.get("adapterAvailable")));
+        return Map.of(
+                "ok", allOk,
+                "restServices", rest,
+                "brokers", brokers,
+                "checkedAt", Instant.now().toString()
+        );
+    }
+
     @Post("/connectors/rest/invoke")
     @Operation(summary = "Ручной вызов внешнего REST-сервиса", description = "Операционный invoke через настроенный REST-коннектор заказчика.")
     public Map<String, Object> invokeExternalRest(HttpRequest<?> request,
@@ -374,6 +548,15 @@ public class ProgrammableController {
         var subject = RequestSecurityContext.current(request)
                 .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
         return templateArchiveService.preview(archive.getBytes(), subject);
+    }
+
+    @Post(value = "/templates/import/validate", consumes = MediaType.MULTIPART_FORM_DATA)
+    @Operation(summary = "Валидировать ITS-архив", description = "Проверяет структуру template, script types и согласованность параметров до импорта.")
+    public Map<String, Object> validateTemplateImport(HttpRequest<?> request,
+                                                      @Part("archive") CompletedFileUpload archive) throws IOException {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        return templateArchiveService.validateArchive(archive.getBytes(), subject);
     }
 
     @Post(value = "/templates/import", consumes = MediaType.MULTIPART_FORM_DATA)

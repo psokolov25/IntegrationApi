@@ -28,10 +28,31 @@
         <div class="actions-row">
             <button id="refreshStatsBtn" data-i18n="refresh">Обновить статистику</button>
             <label><span data-i18n="outboxLimit">Outbox limit</span> <input id="flushOutboxLimitInput" type="number" min="1" value="100"/></label>
+            <label><span data-i18n="outboxStatus">Outbox status</span>
+                <select id="outboxStatusFilterInput">
+                    <option value="">ALL</option>
+                    <option value="PENDING">PENDING</option>
+                    <option value="FAILED">FAILED</option>
+                    <option value="DEAD">DEAD</option>
+                    <option value="SENT">SENT</option>
+                </select>
+            </label>
+            <label class="checkbox-row"><input id="includeSentOutboxInput" type="checkbox"/><span data-i18n="includeSentOutbox">include SENT</span></label>
             <button id="flushOutboxBtn" data-i18n="flush">Flush outbox</button>
+            <label><span data-i18n="outboxEventId">Outbox eventId</span> <input id="retryOutboxEventIdInput" placeholder="evt-123"/></label>
+            <button id="retryOutboxBtn" data-i18n="retryOutbox">Retry outbox by eventId</button>
             <label><span data-i18n="replayDlqLimit">Replay DLQ limit</span> <input id="replayDlqLimitInput" type="number" min="1" value="50"/></label>
             <button id="replayDlqBtn" data-i18n="replayDlqBulk">Replay DLQ bulk</button>
             <button id="recoverInboxBtn" data-i18n="recoverInbox">Recover stale inbox</button>
+            <label><span data-i18n="inboxStatus">Inbox status</span>
+                <select id="inboxStatusInput">
+                    <option value="">ALL</option>
+                    <option value="PROCESSING">PROCESSING</option>
+                    <option value="PROCESSED">PROCESSED</option>
+                    <option value="FAILED">FAILED</option>
+                </select>
+            </label>
+            <button id="clearInboxBtn" data-i18n="clearInbox">Очистить inbox</button>
             <button id="clearDlqBtn" data-i18n="clearDlq">Clear DLQ</button>
             <button id="maintenancePreviewBtn" data-i18n="maintenancePreview">Maintenance preview</button>
             <button id="maintenanceRunBtn" data-i18n="maintenanceRun">Maintenance run</button>
@@ -50,6 +71,10 @@
                 <h3 data-i18n="outboxTop">Outbox (top 20)</h3>
                 <pre id="outboxView" class="mono"></pre>
             </div>
+            <div>
+                <h3 data-i18n="inboxTop">Inbox (top 20)</h3>
+                <pre id="inboxView" class="mono"></pre>
+            </div>
         </div>
     </section>
 
@@ -61,11 +86,19 @@
             <button id="newScriptBtn" data-i18n="new">Новый</button>
             <button id="saveScriptBtn" data-i18n="save">Сохранить</button>
             <button id="validateScriptBtn" data-i18n="validate">Validate</button>
+            <button id="analyzeScriptBtn" data-i18n="analyzeScript">Analyze script</button>
             <button id="debugScriptBtn" data-i18n="debug">Debug run</button>
             <button id="executeScriptBtn" data-i18n="executeAdvanced">Execute advanced</button>
             <button id="formatScriptBtn" data-i18n="formatScript">Format script</button>
             <button id="fontIncreaseBtn" data-i18n="fontIncrease">A+</button>
             <button id="fontDecreaseBtn" data-i18n="fontDecrease">A-</button>
+            <select id="snippetSelect">
+                <option value="" data-i18n="snippetsLabel">IDE snippets</option>
+                <option value="branchStatus">branch-state validator</option>
+                <option value="busAck">bus ACK response</option>
+                <option value="restRoute">external REST routing</option>
+            </select>
+            <button id="insertSnippetBtn" data-i18n="insertSnippet">Вставить snippet</button>
             <label class="checkbox-row"><input id="wordWrapInput" type="checkbox" checked/><span data-i18n="wordWrap">Word wrap</span></label>
         </div>
         <div class="form-grid">
@@ -93,9 +126,18 @@
         <div class="actions-row">
             <button id="formatPayloadBtn" data-i18n="formatPayload">Format payload JSON</button>
             <button id="formatContextBtn" data-i18n="formatContext">Format context JSON</button>
+            <button id="saveDebugPresetBtn" data-i18n="saveDebugPreset">Сохранить debug preset</button>
+            <select id="debugPresetSelect"></select>
+            <button id="loadDebugPresetBtn" data-i18n="loadDebugPreset">Загрузить preset</button>
+            <button id="loadDebugHistoryBtn" data-i18n="loadDebugHistory">Загрузить debug history</button>
+            <button id="clearDebugHistoryBtn" data-i18n="clearDebugHistory">Очистить history</button>
+            <button id="replayLastDebugBtn" data-i18n="replayLastDebug">Повторить последний debug</button>
         </div>
         <h3 data-i18n="debugResult">Результат отладки</h3>
         <pre id="debugResultView" class="mono"></pre>
+        <h3 data-i18n="debugHistoryTitle">История debug запусков</h3>
+        <select id="debugHistorySelect"></select>
+        <pre id="debugHistoryView" class="mono"></pre>
         <div class="editor-status mono" id="editorCursorInfo">Ln 1, Col 1</div>
     </section>
 
@@ -107,6 +149,7 @@
                 <input id="templateFileInput" type="file" accept=".its,.zip"/>
             </label>
             <button id="previewTemplateBtn" data-i18n="previewArchive">Предпросмотр</button>
+            <button id="validateTemplateBtn" data-i18n="validateArchive">Проверить архив</button>
         </div>
         <pre id="templateMetaView" class="mono"></pre>
 
@@ -127,7 +170,12 @@
         <div id="scriptsChecklist" class="scripts-checklist"></div>
         <label><span data-i18n="exportDefaults">Параметры по умолчанию (JSON key->value)</span></label>
         <textarea id="exportDefaultsInput" class="payload-editor" spellcheck="false">{}</textarea>
-        <button id="exportTemplateBtn" data-i18n="exportArchive">Скачать ITS</button>
+        <div class="actions-row">
+            <button id="formatExportDefaultsBtn" data-i18n="formatExportDefaults">Форматировать defaults JSON</button>
+            <button id="checkAllScriptsBtn" data-i18n="checkAllScripts">Выбрать все скрипты</button>
+            <button id="clearAllScriptsBtn" data-i18n="clearAllScripts">Снять выбор</button>
+            <button id="exportTemplateBtn" data-i18n="exportArchive">Скачать ITS</button>
+        </div>
     </section>
 
     <section class="panel">
@@ -152,9 +200,14 @@
         <div class="actions-row">
             <button id="loadConnectorsBtn" data-i18n="connectorsLoad">Загрузить каталог коннекторов</button>
             <button id="loadBrokerTypesBtn" data-i18n="loadBrokerTypes">Загрузить поддерживаемые типы брокеров</button>
+            <button id="connectorsHealthBtn" data-i18n="connectorsHealth">Проверить здоровье коннекторов</button>
         </div>
         <pre id="connectorsCatalogView" class="mono"></pre>
         <pre id="brokerTypesView" class="mono"></pre>
+        <div class="actions-row">
+            <button id="applyFirstBrokerTypeBtn" data-i18n="applyFirstBrokerType">Подставить первый broker type</button>
+            <button id="fillInboundTemplateBtn" data-i18n="fillInboundTemplate">Заполнить inbound шаблон</button>
+        </div>
 
         <h3 data-i18n="externalRestInvoke">Вызов внешнего REST</h3>
         <div class="form-grid">

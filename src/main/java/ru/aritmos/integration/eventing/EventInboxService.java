@@ -3,6 +3,8 @@ package ru.aritmos.integration.eventing;
 import jakarta.inject.Singleton;
 
 import java.time.Instant;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -144,6 +146,34 @@ public class EventInboxService {
             }
         }
         return added;
+    }
+
+    public List<InboxEntry> snapshot(int limit, String statusFilter) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit должен быть > 0");
+        }
+        String normalizedStatus = statusFilter == null ? "" : statusFilter.trim().toUpperCase();
+        return entries.values().stream()
+                .filter(entry -> normalizedStatus.isEmpty() || entry.status().equalsIgnoreCase(normalizedStatus))
+                .sorted(Comparator.comparing(InboxEntry::updatedAt).reversed())
+                .limit(limit)
+                .toList();
+    }
+
+    public int removeByStatus(String statusFilter) {
+        String normalized = statusFilter == null ? "" : statusFilter.trim().toUpperCase();
+        if (normalized.isBlank()) {
+            int removed = entries.size();
+            entries.clear();
+            return removed;
+        }
+        int removed = 0;
+        for (Map.Entry<String, InboxEntry> entry : entries.entrySet()) {
+            if (entry.getValue().status().equalsIgnoreCase(normalized) && entries.remove(entry.getKey()) != null) {
+                removed++;
+            }
+        }
+        return removed;
     }
 
     public enum InboxState {

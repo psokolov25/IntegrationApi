@@ -88,6 +88,33 @@ class IntegrationTemplateArchiveServiceTest {
         Assertions.assertTrue(entries.get("template.yml").contains("endpoint"));
     }
 
+    @Test
+    void shouldValidateTemplateArchiveAndReportUndeclaredParameters() throws Exception {
+        GroovyScriptService groovyScriptService = groovyScriptService();
+        IntegrationTemplateArchiveService service = new IntegrationTemplateArchiveService(groovyScriptService, new AuthorizationService());
+
+        byte[] archive = buildArchive(
+                """
+                        template:
+                          id: validate-template
+                        parameters:
+                          - key: declaredParam
+                            required: true
+                            defaultValue: value
+                        scripts:
+                          - scriptId: reaction-2
+                            type: UNKNOWN_SCRIPT_TYPE
+                            file: scripts/reaction-2.groovy
+                        """,
+                Map.of("scripts/reaction-2.groovy", "return [x: '{{undeclaredParam}}']")
+        );
+
+        Map<String, Object> validation = service.validateArchive(archive, subject);
+        Assertions.assertEquals(false, validation.get("ok"));
+        Assertions.assertTrue(validation.get("undeclaredParameters").toString().contains("undeclaredParam"));
+        Assertions.assertTrue(validation.get("unknownScriptTypes").toString().contains("UNKNOWN_SCRIPT_TYPE"));
+    }
+
     private GroovyScriptService groovyScriptService() {
         return new GroovyScriptService(
                 new InMemoryGroovyScriptStorage(),

@@ -67,6 +67,30 @@ class EventDispatcherServiceTest {
     }
 
     @Test
+    void shouldRetrySingleOutboxEventByEventId() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().setEnabled(true);
+        cfg.getEventing().setMaxRetries(0);
+
+        EventDispatcherService dispatcher = new EventDispatcherService(
+                cfg,
+                new EventInboxService(),
+                new EventRetryService(),
+                new EventStoreService(),
+                new EventOutboxService(),
+                event -> {
+                    throw new IllegalStateException("transport down");
+                },
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+
+        dispatcher.process(new IntegrationEvent("retry-1", "visit-created", "databus", Instant.now(), Map.of()));
+        EventProcessingResult retryResult = dispatcher.retryOutboxByEventId("retry-1");
+
+        Assertions.assertEquals("OUTBOX_FAILED", retryResult.status());
+    }
+
+    @Test
     void shouldRecoverStaleInboxProcessing() {
         IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
         cfg.getEventing().setEnabled(true);
@@ -95,6 +119,31 @@ class EventDispatcherServiceTest {
 
         int recovered = dispatcher.recoverStaleInboxProcessing();
         Assertions.assertTrue(recovered >= 1);
+    }
+
+    @Test
+    void shouldClearInboxByStatus() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().setEnabled(true);
+
+        EventInboxService inbox = new EventInboxService();
+        inbox.beginProcessing("inbox-1");
+        inbox.markProcessed("inbox-1");
+        inbox.beginProcessing("inbox-2");
+        inbox.markFailed("inbox-2", "fail");
+
+        EventDispatcherService dispatcher = new EventDispatcherService(
+                cfg,
+                inbox,
+                new EventRetryService(),
+                new EventStoreService(),
+                event -> {},
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+
+        int removed = dispatcher.clearInboxByStatus("FAILED");
+        Assertions.assertEquals(1, removed);
+        Assertions.assertEquals(0, dispatcher.inboxSnapshot(10, "FAILED").size());
     }
 
     @Test

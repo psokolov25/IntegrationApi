@@ -50,6 +50,41 @@ public class IntegrationTemplateArchiveService {
         return parsed.preview();
     }
 
+    public Map<String, Object> validateArchive(byte[] archiveBytes, SubjectPrincipal subject) {
+        authorizationService.requirePermission(subject, "programmable-script-manage");
+        ParsedTemplate parsed = parseArchive(archiveBytes);
+        Set<String> declared = parsed.parameters().stream()
+                .map(TemplateParameter::key)
+                .collect(LinkedHashSet::new, Set::add, Set::addAll);
+        Set<String> referenced = new LinkedHashSet<>();
+        List<String> unknownScriptTypes = new ArrayList<>();
+        for (TemplateScript script : parsed.scripts()) {
+            referenced.addAll(extractParams(script.scriptBody()));
+            try {
+                GroovyScriptType.valueOf(script.type());
+            } catch (Exception ex) {
+                unknownScriptTypes.add(script.scriptId() + ":" + script.type());
+            }
+        }
+        List<String> undeclaredParams = referenced.stream()
+                .filter(key -> !declared.contains(key))
+                .toList();
+        List<String> unusedParams = declared.stream()
+                .filter(key -> !referenced.contains(key))
+                .toList();
+        return Map.of(
+                "ok", undeclaredParams.isEmpty() && unknownScriptTypes.isEmpty(),
+                "templateId", parsed.templateId(),
+                "scriptsCount", parsed.scripts().size(),
+                "declaredParameters", declared,
+                "referencedParameters", referenced,
+                "undeclaredParameters", undeclaredParams,
+                "unusedParameters", unusedParams,
+                "unknownScriptTypes", unknownScriptTypes,
+                "validatedAt", Instant.now().toString()
+        );
+    }
+
     public Map<String, Object> importArchive(byte[] archiveBytes,
                                              Map<String, String> parameterValues,
                                              boolean replaceExisting,
