@@ -28,6 +28,7 @@
         <button class="tab-btn" data-tab-target="scripts" data-i18n="tabScripts">Скрипты и обработчики</button>
         <button class="tab-btn" data-tab-target="templates" data-i18n="tabTemplates">Шаблоны и snapshot</button>
         <button class="tab-btn" data-tab-target="connectors" data-i18n="tabConnectors">Коннекторы и inbound</button>
+        <button class="tab-btn" data-tab-target="studio" data-i18n="tabStudio">Programmable Studio</button>
         <button class="tab-btn" data-tab-target="ux" data-i18n="tabUx">UX анализ</button>
     </nav>
 
@@ -67,6 +68,41 @@
             <button id="maintenanceRunBtn" data-i18n="maintenanceRun">Maintenance run</button>
         </div>
         <pre id="eventOpsResultView" class="mono"></pre>
+    </section>
+
+    <section class="panel tab-panel hidden" data-tab-panel="studio">
+        <h2 data-i18n="studioSectionTitle">Programmable Studio backend + frontend</h2>
+        <div class="actions-row">
+            <label><span data-i18n="studioHistoryLimit">Debug history limit</span> <input id="studioHistoryLimitInput" type="number" min="1" value="20"/></label>
+            <button id="loadStudioBootstrapBtn" data-i18n="studioLoadBootstrap">Загрузить studio bootstrap</button>
+            <button id="loadStudioSettingsBtn" data-i18n="studioLoadSettings">Загрузить editor settings</button>
+            <button id="loadStudioCapabilitiesBtn" data-i18n="studioLoadCapabilities">Загрузить capabilities</button>
+            <button id="loadStudioPlaybookBtn" data-i18n="studioLoadPlaybook">Загрузить playbook</button>
+            <button id="loadStudioOpsCatalogBtn" data-i18n="studioLoadOperationsCatalog">Загрузить operations catalog</button>
+        </div>
+        <div class="form-grid">
+            <label>theme
+                <select id="studioThemeInput">
+                    <option value="dark">dark</option>
+                    <option value="light">light</option>
+                    <option value="contrast">contrast</option>
+                </select>
+            </label>
+            <label>fontSize <input id="studioFontSizeInput" type="number" min="10" max="28" value="14"/></label>
+            <label class="checkbox-row"><input id="studioAutoSaveInput" type="checkbox" checked/><span>autoSave</span></label>
+            <label class="checkbox-row"><input id="studioWordWrapInput" type="checkbox" checked/><span>wordWrap</span></label>
+            <label>lastScriptId <input id="studioLastScriptIdInput" placeholder="branch-state-view"/></label>
+        </div>
+        <div class="actions-row">
+            <button id="saveStudioSettingsBtn" data-i18n="studioSaveSettings">Сохранить editor settings</button>
+            <select id="studioOperationInput"></select>
+            <input id="studioOperationParamsInput" value="{\"limit\":100}" class="inline-json-input"/>
+            <button id="runStudioOperationBtn" data-i18n="studioRunOperation">Выполнить operation</button>
+        </div>
+        <pre id="studioBootstrapView" class="mono"></pre>
+        <pre id="studioSettingsView" class="mono"></pre>
+        <pre id="studioPlaybookView" class="mono"></pre>
+        <pre id="studioOperationView" class="mono"></pre>
     </section>
 
     <section class="panel tab-panel" data-tab-panel="eventing">

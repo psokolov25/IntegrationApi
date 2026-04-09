@@ -1,3 +1,38 @@
+const defaultStudioOperationsCatalog = [
+    {operation: "FLUSH_OUTBOX", description: "Повторно отправить pending/failed outbox-сообщения", parameterTemplate: {limit: 100}},
+    {operation: "RECOVER_STALE_INBOX", description: "Перевести stale PROCESSING inbox-записи в FAILED", parameterTemplate: {}},
+    {operation: "CLEAR_DEBUG_HISTORY", description: "Очистить debug history (весь или по scriptId)", parameterTemplate: {scriptId: ""}},
+    {operation: "REFRESH_BOOTSTRAP", description: "Получить свежий studio bootstrap snapshot", parameterTemplate: {debugHistoryLimit: 20}}
+];
+const STUDIO_OPS_CACHE_KEY = "integration-ui-studio-operations-catalog";
+
+function normalizeStudioOperationsCatalog(rawCatalog) {
+    if (!Array.isArray(rawCatalog)) {
+        return [];
+    }
+    return rawCatalog
+        .filter(item => item && typeof item.operation === "string" && item.operation.trim().length > 0)
+        .map(item => ({
+            operation: item.operation.trim().toUpperCase(),
+            description: typeof item.description === "string" ? item.description : "",
+            parameterTemplate: item.parameterTemplate && typeof item.parameterTemplate === "object"
+                ? item.parameterTemplate
+                : {}
+        }));
+}
+
+function readStudioOperationsCatalogCache() {
+    try {
+        const raw = localStorage.getItem(STUDIO_OPS_CACHE_KEY);
+        if (!raw) {
+            return [];
+        }
+        return normalizeStudioOperationsCatalog(JSON.parse(raw));
+    } catch (error) {
+        return [];
+    }
+}
+
 const state = {
     apiKey: localStorage.getItem("integration-ui-api-key") || "",
     scripts: [],
@@ -9,6 +44,7 @@ const state = {
     scriptEditorFontSize: Number(localStorage.getItem("integration-ui-editor-font-size") || "13"),
     debugPresets: JSON.parse(localStorage.getItem("integration-ui-debug-presets") || "[]"),
     brokerTypes: [],
+    studioOperationsCatalog: readStudioOperationsCatalogCache(),
     activeTab: localStorage.getItem("integration-ui-active-tab") || "eventing",
     dashboardRaw: {
         dlq: [],
@@ -788,7 +824,120 @@ async function runInboundReaction() {
     setStatus(`Inbound reaction выполнен, результатов: ${Array.isArray(result) ? result.length : 0}`);
 }
 
+async function loadStudioBootstrap() {
+    const limit = Number(el("studioHistoryLimitInput").value || "20");
+    const result = await apiGet(`/api/v1/program/studio/bootstrap?debugHistoryLimit=${encodeURIComponent(limit)}`);
+    el("studioBootstrapView").textContent = JSON.stringify(result, null, 2);
+    const settings = result.editorSettings || {};
+    el("studioThemeInput").value = settings.theme || "dark";
+    el("studioFontSizeInput").value = settings.fontSize || 14;
+    el("studioAutoSaveInput").checked = settings.autoSave !== false;
+    el("studioWordWrapInput").checked = settings.wordWrap !== false;
+    el("studioLastScriptIdInput").value = settings.lastScriptId || "";
+    setStatus("Studio bootstrap загружен");
+}
+
+async function loadStudioSettings() {
+    const result = await apiGet("/api/v1/program/studio/settings");
+    el("studioSettingsView").textContent = JSON.stringify(result, null, 2);
+    el("studioThemeInput").value = result.theme || "dark";
+    el("studioFontSizeInput").value = result.fontSize || 14;
+    el("studioAutoSaveInput").checked = result.autoSave !== false;
+    el("studioWordWrapInput").checked = result.wordWrap !== false;
+    el("studioLastScriptIdInput").value = result.lastScriptId || "";
+    setStatus("Studio settings загружены");
+}
+
+async function loadStudioCapabilities() {
+    const result = await apiGet("/api/v1/program/studio/capabilities");
+    el("studioSettingsView").textContent = JSON.stringify(result, null, 2);
+    setStatus("Studio capabilities загружены");
+}
+
+async function saveStudioSettings() {
+    const payload = {
+        theme: el("studioThemeInput").value,
+        fontSize: Number(el("studioFontSizeInput").value || "14"),
+        autoSave: el("studioAutoSaveInput").checked,
+        wordWrap: el("studioWordWrapInput").checked,
+        lastScriptId: el("studioLastScriptIdInput").value.trim(),
+        updatedAt: null
+    };
+    const result = await apiPut("/api/v1/program/studio/settings", payload);
+    el("studioSettingsView").textContent = JSON.stringify(result, null, 2);
+    setStatus("Studio settings сохранены");
+}
+
+async function loadStudioPlaybook() {
+    const result = await apiGet("/api/v1/program/studio/playbook");
+    el("studioPlaybookView").textContent = JSON.stringify(result, null, 2);
+    setStatus("Studio playbook загружен");
+}
+
+function renderStudioOperationCatalog() {
+    const select = el("studioOperationInput");
+    if (!select) {
+        return;
+    }
+    const items = normalizeStudioOperationsCatalog(state.studioOperationsCatalog || []);
+    const fallbackItems = items.length > 0 ? items : defaultStudioOperationsCatalog;
+    select.innerHTML = "";
+    for (const item of fallbackItems) {
+        const option = document.createElement("option");
+        option.value = item.operation;
+        option.textContent = item.operation;
+        select.appendChild(option);
+    }
+    state.studioOperationsCatalog = [...fallbackItems];
+    applyStudioOperationTemplate();
+}
+
+function applyStudioOperationTemplate() {
+    const selected = el("studioOperationInput").value;
+    const item = (state.studioOperationsCatalog || []).find(entry => entry.operation === selected);
+    if (!item) {
+        return;
+    }
+    el("studioOperationParamsInput").value = JSON.stringify(item.parameterTemplate || {}, null, 2);
+}
+
+async function loadStudioOperationsCatalog() {
+    let result = [];
+    try {
+        result = await apiGet("/api/v1/program/studio/operations/catalog");
+    } catch (error) {
+        setStatus(`Studio operations catalog недоступен, использован локальный fallback: ${error.message}`);
+    }
+    state.studioOperationsCatalog = normalizeStudioOperationsCatalog(result);
+    if (state.studioOperationsCatalog.length === 0) {
+        state.studioOperationsCatalog = [...defaultStudioOperationsCatalog];
+    }
+    localStorage.setItem(STUDIO_OPS_CACHE_KEY, JSON.stringify(state.studioOperationsCatalog));
+    renderStudioOperationCatalog();
+    el("studioOperationView").textContent = JSON.stringify(state.studioOperationsCatalog, null, 2);
+    if (Array.isArray(result) && result.length > 0) {
+        setStatus("Studio operations catalog загружен");
+    }
+}
+
+async function runStudioOperation() {
+    const operation = el("studioOperationInput").value;
+    const parameters = parseJsonInput("studioOperationParamsInput", "Studio operation parameters");
+    const result = await apiPost("/api/v1/program/studio/operations", {operation, parameters});
+    el("studioOperationView").textContent = JSON.stringify(result, null, 2);
+    if (operation === "REFRESH_BOOTSTRAP") {
+        const snapshot = result.snapshot || {};
+        el("studioBootstrapView").textContent = JSON.stringify(snapshot, null, 2);
+    }
+    if (operation === "FLUSH_OUTBOX" || operation === "RECOVER_STALE_INBOX") {
+        await refreshDashboard();
+    }
+    setStatus(`Studio operation выполнена: ${operation}`);
+}
+
 function init() {
+    renderStudioOperationCatalog();
+
     el("apiKeyInput").value = state.apiKey;
     el("anonymousModeInput").checked = state.anonymousMode;
     el("apiKeyInput").disabled = state.anonymousMode;
@@ -866,6 +1015,14 @@ function init() {
     el("invokeRestBtn").onclick = () => invokeExternalRest().catch(e => setStatus(`Ошибка invoke REST: ${e.message}`));
     el("publishBusBtn").onclick = () => publishToBus().catch(e => setStatus(`Ошибка publish bus: ${e.message}`));
     el("runInboundReactionBtn").onclick = () => runInboundReaction().catch(e => setStatus(`Ошибка inbound reaction: ${e.message}`));
+    el("loadStudioBootstrapBtn").onclick = () => loadStudioBootstrap().catch(e => setStatus(`Ошибка studio bootstrap: ${e.message}`));
+    el("loadStudioSettingsBtn").onclick = () => loadStudioSettings().catch(e => setStatus(`Ошибка studio settings: ${e.message}`));
+    el("loadStudioCapabilitiesBtn").onclick = () => loadStudioCapabilities().catch(e => setStatus(`Ошибка studio capabilities: ${e.message}`));
+    el("saveStudioSettingsBtn").onclick = () => saveStudioSettings().catch(e => setStatus(`Ошибка save studio settings: ${e.message}`));
+    el("loadStudioPlaybookBtn").onclick = () => loadStudioPlaybook().catch(e => setStatus(`Ошибка studio playbook: ${e.message}`));
+    el("loadStudioOpsCatalogBtn").onclick = () => loadStudioOperationsCatalog().catch(e => setStatus(`Ошибка studio operations catalog: ${e.message}`));
+    el("runStudioOperationBtn").onclick = () => runStudioOperation().catch(e => setStatus(`Ошибка studio operation: ${e.message}`));
+    el("studioOperationInput").onchange = () => applyStudioOperationTemplate();
     el("formatPayloadBtn").onclick = () => {
         try {
             formatJsonTextarea("debugPayloadInput", "Payload");
@@ -945,6 +1102,8 @@ function init() {
         .then(() => renderDebugPresets())
         .then(() => setupTabs())
         .then(() => setupEditorExperience())
+        .then(() => loadStudioOperationsCatalog())
+        .then(() => loadStudioSettings().catch(() => null))
         .then(() => {
             if (state.anonymousMode) {
                 setStatus(t("anonymousEnabledHint"));

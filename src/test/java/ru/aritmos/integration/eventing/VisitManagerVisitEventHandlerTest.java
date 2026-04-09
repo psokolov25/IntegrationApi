@@ -175,6 +175,54 @@ class VisitManagerVisitEventHandlerTest {
         Assertions.assertEquals("vm-new", state.updatedBy());
     }
 
+    @Test
+    void shouldRefreshBranchStateFromNestedDatabusVisitPayload() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+        cfg.setBranchRouting(Map.of("BR-504", "vm-main"));
+        cfg.setBranchStateEventRefreshDebounce(Duration.ofMillis(500));
+
+        StubVisitManagerClient client = new StubVisitManagerClient(cfg);
+        GatewayService gatewayService = new GatewayService(
+                new RoutingService(cfg),
+                client,
+                new QueueCache(cfg),
+                new BranchStateCache(cfg),
+                new AuditService(),
+                new VisitManagerMetricsService()
+        );
+        VisitManagerVisitEventHandler handler = new VisitManagerVisitEventHandler(
+                gatewayService,
+                new VisitManagerBranchStateEventMapper(),
+                cfg,
+                Clock.fixed(Instant.parse("2026-02-01T16:00:00Z"), ZoneOffset.UTC)
+        );
+
+        client.updateBranchState("vm-main", "BR-504",
+                new BranchStateUpdateRequest("OPEN", "09:00-18:00", 1, "vm-nested"));
+        handler.handle(new IntegrationEvent(
+                "evt-visit-504",
+                "VISIT_COMPLETED",
+                "databus-fallback",
+                Instant.parse("2026-02-01T16:00:00Z"),
+                Map.of(
+                        "data", Map.of(
+                                "branch", Map.of("id", "BR-504"),
+                                "meta", Map.of("visitManagerId", "vm-main")
+                        )
+                )
+        ));
+
+        var state = gatewayService.getBranchState("subject", "BR-504", "vm-main");
+        Assertions.assertEquals("OPEN", state.status());
+        Assertions.assertEquals("vm-nested", state.updatedBy());
+        Assertions.assertEquals("vm-main", state.sourceVisitManagerId());
+    }
+
     private static final class MutableClock extends Clock {
         private Instant current;
 

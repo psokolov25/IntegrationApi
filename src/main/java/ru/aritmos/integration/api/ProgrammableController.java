@@ -28,6 +28,9 @@ import ru.aritmos.integration.domain.InboundMessageReactionRequest;
 import ru.aritmos.integration.domain.IntegrationTemplateExportRequest;
 import ru.aritmos.integration.domain.IntegrationTemplatePreviewDto;
 import ru.aritmos.integration.domain.ScriptExecutionRequest;
+import ru.aritmos.integration.domain.StudioEditorSettingsDto;
+import ru.aritmos.integration.domain.StudioOperationCatalogItemDto;
+import ru.aritmos.integration.domain.StudioOperationRequest;
 import ru.aritmos.integration.domain.ConnectorPublishRequest;
 import ru.aritmos.integration.domain.ConnectorRestInvokeRequest;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
@@ -38,6 +41,9 @@ import ru.aritmos.integration.programming.GroovyScriptService;
 import ru.aritmos.integration.programming.IntegrationTemplateArchiveService;
 import ru.aritmos.integration.programming.ProgrammableEndpointService;
 import ru.aritmos.integration.programming.ScriptDebugHistoryService;
+import ru.aritmos.integration.programming.StudioEditorSettingsService;
+import ru.aritmos.integration.programming.StudioOperationsService;
+import ru.aritmos.integration.programming.StudioWorkspaceService;
 import ru.aritmos.integration.security.RequestSecurityContext;
 import ru.aritmos.integration.security.core.AuthorizationService;
 
@@ -64,6 +70,9 @@ public class ProgrammableController {
     private final ObjectMapper objectMapper;
     private final AuthorizationService authorizationService;
     private final ScriptDebugHistoryService scriptDebugHistoryService;
+    private final StudioWorkspaceService studioWorkspaceService;
+    private final StudioEditorSettingsService studioEditorSettingsService;
+    private final StudioOperationsService studioOperationsService;
 
     public ProgrammableController(ProgrammableEndpointService programmableEndpointService,
                                   GroovyScriptService groovyScriptService,
@@ -74,7 +83,10 @@ public class ProgrammableController {
                                   IntegrationGatewayConfiguration configuration,
                                   ObjectMapper objectMapper,
                                   AuthorizationService authorizationService,
-                                  ScriptDebugHistoryService scriptDebugHistoryService) {
+                                  ScriptDebugHistoryService scriptDebugHistoryService,
+                                  StudioWorkspaceService studioWorkspaceService,
+                                  StudioEditorSettingsService studioEditorSettingsService,
+                                  StudioOperationsService studioOperationsService) {
         this.programmableEndpointService = programmableEndpointService;
         this.groovyScriptService = groovyScriptService;
         this.templateArchiveService = templateArchiveService;
@@ -85,6 +97,9 @@ public class ProgrammableController {
         this.objectMapper = objectMapper;
         this.authorizationService = authorizationService;
         this.scriptDebugHistoryService = scriptDebugHistoryService;
+        this.studioWorkspaceService = studioWorkspaceService;
+        this.studioEditorSettingsService = studioEditorSettingsService;
+        this.studioOperationsService = studioOperationsService;
     }
 
     @Post("/{endpointId}")
@@ -499,6 +514,82 @@ public class ProgrammableController {
                 "brokers", brokers,
                 "checkedAt", Instant.now().toString()
         );
+    }
+
+    @Get("/studio/bootstrap")
+    @Operation(summary = "Bootstrap данные programmable-студии",
+            description = "Возвращает сводную информацию для GUI: inbox/outbox, runtime Groovy, коннекторы, IDE editor и настройки.")
+    public Map<String, Object> studioBootstrap(HttpRequest<?> request,
+                                               @QueryValue(defaultValue = "20") int debugHistoryLimit) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        Map<String, Object> response = new java.util.LinkedHashMap<>(studioWorkspaceService.buildWorkspaceSnapshot(debugHistoryLimit));
+        response.put("editorSettings", studioEditorSettingsService.get(subject.subjectId()));
+        response.put("editorCapabilities", studioEditorSettingsService.capabilities());
+        return response;
+    }
+
+    @Get("/studio/settings")
+    @Operation(summary = "Получить настройки IDE-редактора", description = "Возвращает персональные настройки редактора programmable-студии.")
+    public StudioEditorSettingsDto getStudioSettings(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return studioEditorSettingsService.get(subject.subjectId());
+    }
+
+    @Put("/studio/settings")
+    @Operation(summary = "Сохранить настройки IDE-редактора", description = "Сохраняет персональные настройки редактора programmable-студии.")
+    public StudioEditorSettingsDto saveStudioSettings(HttpRequest<?> request,
+                                                      @Body StudioEditorSettingsDto payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return studioEditorSettingsService.save(subject.subjectId(), payload);
+    }
+
+    @Get("/studio/capabilities")
+    @Operation(summary = "Capabilities IDE-настроек", description = "Возвращает ограничения и поддерживаемые параметры IDE-редактора.")
+    public Map<String, Object> studioSettingsCapabilities(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return studioEditorSettingsService.capabilities();
+    }
+
+    @Get("/studio/playbook")
+    @Operation(summary = "Playbook programmable-студии",
+            description = "Пошаговый операционный playbook по ключевым группам: inbox-outbox, runtime, connectors, IDE, settings, GUI operations.")
+    public List<Map<String, Object>> studioPlaybook(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return studioWorkspaceService.buildPlaybook();
+    }
+
+    @Get("/studio/operations/catalog")
+    @Operation(summary = "Каталог studio operations",
+            description = "Возвращает поддерживаемые operation-коды и шаблоны параметров для GUI.")
+    public List<StudioOperationCatalogItemDto> studioOperationsCatalog(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return studioOperationsService.catalog();
+    }
+
+    @Post("/studio/operations")
+    @Operation(summary = "Выполнить служебную операцию studio",
+            description = "Единая точка для GUI-операций: flush outbox, recover stale inbox, clear debug history и bootstrap refresh.")
+    public Map<String, Object> executeStudioOperation(HttpRequest<?> request,
+                                                      @Body StudioOperationRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        if (payload == null || payload.operation() == null || payload.operation().isBlank()) {
+            throw new IllegalArgumentException("operation обязателен");
+        }
+        return studioOperationsService.execute(payload.operation(), payload.parameters(), subject.subjectId());
     }
 
     @Post("/connectors/rest/invoke")
