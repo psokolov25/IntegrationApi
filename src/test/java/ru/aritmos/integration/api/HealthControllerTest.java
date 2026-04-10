@@ -42,6 +42,7 @@ class HealthControllerTest {
         Assertions.assertEquals("UP", readiness.components().get("security"));
         Assertions.assertEquals("UP", readiness.components().get("gateway"));
         Assertions.assertEquals("DISABLED", readiness.components().get("federation"));
+        Assertions.assertEquals("UP", readiness.components().get("aggregation"));
         Assertions.assertEquals("DISABLED", readiness.components().get("programmable-api"));
         Assertions.assertEquals("ENABLED", readiness.components().get("client-policy"));
         Assertions.assertEquals("UP", readiness.components().get("observability"));
@@ -125,6 +126,35 @@ class HealthControllerTest {
         var readiness = controller.readiness();
         Assertions.assertEquals("DEGRADED", readiness.status());
         Assertions.assertEquals("DEGRADED", readiness.components().get("security"));
+    }
+
+    @Test
+    void shouldReturnDegradedWhenAggregationConfigInvalid() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().setEnabled(false);
+        cfg.setApiKeys(List.of("dev-key"));
+        cfg.setAggregateMaxBranches(0);
+        cfg.setAggregateRequestTimeoutMillis(0);
+
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+
+        EventDispatcherService dispatcher = new EventDispatcherService(
+                cfg,
+                new EventInboxService(),
+                new EventRetryService(),
+                new EventStoreService(),
+                event -> {},
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+        HealthController controller = new HealthController(cfg, dispatcher);
+
+        var readiness = controller.readiness();
+        Assertions.assertEquals("DEGRADED", readiness.status());
+        Assertions.assertEquals("DOWN", readiness.components().get("aggregation"));
     }
 
     @Test

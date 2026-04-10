@@ -309,6 +309,44 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals(2, mapped.queueSize());
     }
 
+
+    @Test
+    void shouldParseUpdatedAtFromEpochSecondsAndMillis() {
+        IntegrationEvent secondsEvent = new IntegrationEvent(
+                "evt-vm-12",
+                "branch-state-updated",
+                "vm-main",
+                Instant.parse("2026-04-09T11:30:00Z"),
+                Map.of(
+                        "branchId", "BR-EPOCH-SECONDS",
+                        "targetVisitManagerId", "vm-main",
+                        "status", "OPEN",
+                        "activeWindow", "09:00-18:00",
+                        "updatedAt", 1775734200
+                )
+        );
+
+        IntegrationEvent millisEvent = new IntegrationEvent(
+                "evt-vm-13",
+                "branch-state-updated",
+                "vm-main",
+                Instant.parse("2026-04-09T11:30:00Z"),
+                Map.of(
+                        "branchId", "BR-EPOCH-MILLIS",
+                        "targetVisitManagerId", "vm-main",
+                        "status", "OPEN",
+                        "activeWindow", "09:00-18:00",
+                        "updatedAt", "1775734200000"
+                )
+        );
+
+        VisitManagerBranchStateEventPayload secondsPayload = mapper.map(secondsEvent);
+        VisitManagerBranchStateEventPayload millisPayload = mapper.map(millisEvent);
+
+        Assertions.assertEquals(Instant.ofEpochSecond(1775734200L), secondsPayload.updatedAt());
+        Assertions.assertEquals(Instant.ofEpochMilli(1775734200000L), millisPayload.updatedAt());
+    }
+
     @Test
     void shouldSupportWildcardSegmentsInConfiguredPaths() {
         IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();

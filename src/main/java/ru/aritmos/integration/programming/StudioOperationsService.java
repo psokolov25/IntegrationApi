@@ -71,6 +71,61 @@ public class StudioOperationsService {
                         "snapshot", snapshot
                 );
             }
+            case SNAPSHOT_INBOX_OUTBOX -> {
+                int limit = intParam(args.get("limit"), 20);
+                String status = String.valueOf(args.getOrDefault("status", ""));
+                boolean includeSent = booleanParam(args.get("includeSent"), false);
+                yield Map.of(
+                        "operation", operation.name(),
+                        "limit", limit,
+                        "status", status,
+                        "includeSent", includeSent,
+                        "snapshot", studioWorkspaceService.buildInboxOutboxSnapshot(limit, status, includeSent)
+                );
+            }
+            case SNAPSHOT_VISIT_MANAGERS -> Map.of(
+                    "operation", operation.name(),
+                    "snapshot", studioWorkspaceService.buildVisitManagersSnapshot()
+            );
+            case SNAPSHOT_BRANCH_CACHE -> {
+                int limit = intParam(args.get("limit"), 50);
+                yield Map.of(
+                        "operation", operation.name(),
+                        "limit", limit,
+                        "snapshot", studioWorkspaceService.buildBranchStateCacheSnapshot(limit)
+                );
+            }
+            case SNAPSHOT_EXTERNAL_SERVICES -> Map.of(
+                    "operation", operation.name(),
+                    "snapshot", studioWorkspaceService.buildExternalServicesSnapshot()
+            );
+            case SNAPSHOT_RUNTIME_SETTINGS -> Map.of(
+                    "operation", operation.name(),
+                    "snapshot", studioWorkspaceService.buildRuntimeSettingsSnapshot()
+            );
+            case EXPORT_EDITOR_SETTINGS -> Map.of(
+                    "operation", operation.name(),
+                    "settingsBySubject", studioEditorSettingsService.exportAll(),
+                    "capabilities", studioEditorSettingsService.capabilities()
+            );
+            case PREVIEW_EVENTING_MAINTENANCE -> Map.of(
+                    "operation", operation.name(),
+                    "report", eventDispatcherService.previewMaintenance(),
+                    "stats", eventDispatcherService.stats()
+            );
+            case EXPORT_EVENTING_SNAPSHOT -> Map.of(
+                    "operation", operation.name(),
+                    "snapshot", eventDispatcherService.exportSnapshot(),
+                    "health", eventDispatcherService.health()
+            );
+            case DASHBOARD_SNAPSHOT -> {
+                int limit = intParam(args.get("debugHistoryLimit"), 20);
+                yield Map.of(
+                        "operation", operation.name(),
+                        "debugHistoryLimit", limit,
+                        "snapshot", studioWorkspaceService.buildDashboardSnapshot(limit)
+                );
+            }
         };
     }
 
@@ -97,11 +152,30 @@ public class StudioOperationsService {
         }
     }
 
+    private boolean booleanParam(Object value, boolean fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return "true".equalsIgnoreCase(String.valueOf(value).trim());
+    }
+
     enum Operation {
         FLUSH_OUTBOX("Повторно отправить pending/failed outbox-сообщения", Map.of("limit", 100)),
         RECOVER_STALE_INBOX("Перевести stale PROCESSING inbox-записи в FAILED", Map.of()),
         CLEAR_DEBUG_HISTORY("Очистить debug history (весь или по scriptId)", Map.of("scriptId", "")),
-        REFRESH_BOOTSTRAP("Получить свежий studio bootstrap snapshot", Map.of("debugHistoryLimit", 20));
+        REFRESH_BOOTSTRAP("Получить свежий studio bootstrap snapshot", Map.of("debugHistoryLimit", 20)),
+        SNAPSHOT_INBOX_OUTBOX("Получить диагностический срез inbox/outbox для IDE", Map.of("limit", 20, "status", "", "includeSent", false)),
+        SNAPSHOT_VISIT_MANAGERS("Получить диагностический срез конфигурации VisitManager", Map.of()),
+        SNAPSHOT_BRANCH_CACHE("Получить диагностический срез кэша отделений branch-state", Map.of("limit", 50)),
+        SNAPSHOT_EXTERNAL_SERVICES("Получить диагностический срез внешних сервисов и брокеров", Map.of()),
+        SNAPSHOT_RUNTIME_SETTINGS("Получить runtime-срез настроек контрольной панели", Map.of()),
+        EXPORT_EDITOR_SETTINGS("Экспортировать настройки IDE-редактора для GUI backup", Map.of()),
+        PREVIEW_EVENTING_MAINTENANCE("Предпросмотр maintenance inbox/outbox/DLQ/processed без изменений", Map.of()),
+        EXPORT_EVENTING_SNAPSHOT("Экспортировать snapshot eventing для backup/import", Map.of()),
+        DASHBOARD_SNAPSHOT("Получить сводный dashboard snapshot для GUI", Map.of("debugHistoryLimit", 20));
 
         private final String description;
         private final Map<String, Object> parameterTemplate;

@@ -56,6 +56,7 @@ public class HealthController {
         components.put("eventing", eventingStatus);
         components.put("gateway", resolveGatewayStatus());
         components.put("federation", resolveFederationStatus());
+        components.put("aggregation", resolveAggregationStatus());
         components.put("programmable-api", configuration.getProgrammableApi().isEnabled() ? "ENABLED" : "DISABLED");
         components.put("client-policy", resolveClientPolicyStatus());
         components.put("observability", "UP");
@@ -84,6 +85,17 @@ public class HealthController {
 
     private String resolveFederationStatus() {
         return configuration.getVisitManagers().size() > 1 ? "ENABLED" : "DISABLED";
+    }
+
+
+    private String resolveAggregationStatus() {
+        if (configuration.getAggregateMaxBranches() <= 0) {
+            return "DOWN";
+        }
+        if (configuration.getAggregateRequestTimeoutMillis() <= 0) {
+            return "DOWN";
+        }
+        return "UP";
     }
 
     private String resolveClientPolicyStatus() {

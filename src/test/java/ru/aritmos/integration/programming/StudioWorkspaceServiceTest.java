@@ -3,9 +3,11 @@ package ru.aritmos.integration.programming;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
+import ru.aritmos.integration.domain.BranchStateDto;
 import ru.aritmos.integration.eventing.EventInboxService;
 import ru.aritmos.integration.eventing.EventOutboxService;
 import ru.aritmos.integration.eventing.IntegrationEvent;
+import ru.aritmos.integration.service.BranchStateCache;
 
 import java.time.Instant;
 import java.util.List;
@@ -140,9 +142,63 @@ class StudioWorkspaceServiceTest {
         );
 
         List<Map<String, Object>> playbook = service.buildPlaybook();
-        Assertions.assertEquals(6, playbook.size());
+        Assertions.assertEquals(9, playbook.size());
         Assertions.assertEquals("inbox-outbox", playbook.get(0).get("group"));
+        Assertions.assertEquals("import-export", playbook.get(7).get("group"));
         Assertions.assertEquals("gui-ops", playbook.get(playbook.size() - 1).get("group"));
+    }
+
+    @Test
+    void shouldBuildDashboardSnapshotForGui() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost:8081");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+
+        IntegrationGatewayConfiguration.ExternalRestServiceSettings rest = new IntegrationGatewayConfiguration.ExternalRestServiceSettings();
+        rest.setId("crm");
+        rest.setBaseUrl("http://crm.local");
+        cfg.getProgrammableApi().setExternalRestServices(List.of(rest));
+        BranchStateCache branchStateCache = new BranchStateCache(cfg);
+        branchStateCache.put(new BranchStateDto(
+                "BR-1",
+                "vm-main",
+                "OPEN",
+                "09:00-18:00",
+                3,
+                Instant.parse("2026-04-01T10:00:00Z"),
+                false,
+                "system:eventing"
+        ));
+
+        StudioWorkspaceService service = new StudioWorkspaceService(
+                cfg,
+                new EventInboxService(),
+                new EventOutboxService(),
+                new InMemoryGroovyScriptStorage(),
+                new ScriptDebugHistoryService(),
+                List.of(new KafkaOnlyBusAdapter()),
+                branchStateCache
+        );
+
+        Map<String, Object> dashboard = service.buildDashboardSnapshot(25);
+        Assertions.assertTrue(dashboard.containsKey("workspace"));
+        Assertions.assertTrue(dashboard.containsKey("inboxOutbox"));
+        Assertions.assertTrue(dashboard.containsKey("visitManagers"));
+        Assertions.assertTrue(dashboard.containsKey("branchStateCache"));
+        Assertions.assertTrue(dashboard.containsKey("externalServices"));
+        Assertions.assertTrue(dashboard.containsKey("runtimeSettings"));
+
+        Map<String, Object> visitManagers = cast(dashboard.get("visitManagers"));
+        Assertions.assertEquals(1, visitManagers.get("visitManagersCount"));
+        Map<String, Object> external = cast(dashboard.get("externalServices"));
+        Assertions.assertEquals(1, external.get("restServicesCount"));
+        Map<String, Object> branchState = cast(dashboard.get("branchStateCache"));
+        Assertions.assertEquals(1, branchState.get("total"));
+        Map<String, Object> runtimeSettings = cast(dashboard.get("runtimeSettings"));
+        Assertions.assertEquals(cfg.getAggregateMaxBranches(), runtimeSettings.get("aggregateMaxBranches"));
     }
 
     @SuppressWarnings("unchecked")

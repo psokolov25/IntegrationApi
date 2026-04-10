@@ -46,6 +46,7 @@ import ru.aritmos.integration.programming.StudioOperationsService;
 import ru.aritmos.integration.programming.StudioWorkspaceService;
 import ru.aritmos.integration.security.RequestSecurityContext;
 import ru.aritmos.integration.security.core.AuthorizationService;
+import ru.aritmos.integration.service.VisitManagerMetricsService;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -73,6 +74,7 @@ public class ProgrammableController {
     private final StudioWorkspaceService studioWorkspaceService;
     private final StudioEditorSettingsService studioEditorSettingsService;
     private final StudioOperationsService studioOperationsService;
+    private final VisitManagerMetricsService visitManagerMetricsService;
 
     public ProgrammableController(ProgrammableEndpointService programmableEndpointService,
                                   GroovyScriptService groovyScriptService,
@@ -86,7 +88,8 @@ public class ProgrammableController {
                                   ScriptDebugHistoryService scriptDebugHistoryService,
                                   StudioWorkspaceService studioWorkspaceService,
                                   StudioEditorSettingsService studioEditorSettingsService,
-                                  StudioOperationsService studioOperationsService) {
+                                  StudioOperationsService studioOperationsService,
+                                  VisitManagerMetricsService visitManagerMetricsService) {
         this.programmableEndpointService = programmableEndpointService;
         this.groovyScriptService = groovyScriptService;
         this.templateArchiveService = templateArchiveService;
@@ -100,6 +103,7 @@ public class ProgrammableController {
         this.studioWorkspaceService = studioWorkspaceService;
         this.studioEditorSettingsService = studioEditorSettingsService;
         this.studioOperationsService = studioOperationsService;
+        this.visitManagerMetricsService = visitManagerMetricsService;
     }
 
     @Post("/{endpointId}")
@@ -530,6 +534,22 @@ public class ProgrammableController {
         return response;
     }
 
+    @Get("/studio/dashboard")
+    @Operation(summary = "Сводный dashboard programmable-студии",
+            description = "GUI-friendly сводка: dashboard snapshot, connectors health и метрики VisitManager.")
+    public Map<String, Object> studioDashboard(HttpRequest<?> request,
+                                               @QueryValue(defaultValue = "20") int debugHistoryLimit) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return Map.of(
+                "dashboard", studioWorkspaceService.buildDashboardSnapshot(debugHistoryLimit),
+                "connectorsHealth", connectorsHealth(request),
+                "visitManagerMetrics", visitManagerMetricsService.snapshot(),
+                "generatedAt", Instant.now().toString()
+        );
+    }
+
     @Get("/studio/settings")
     @Operation(summary = "Получить настройки IDE-редактора", description = "Возвращает персональные настройки редактора programmable-студии.")
     public StudioEditorSettingsDto getStudioSettings(HttpRequest<?> request) {
@@ -558,6 +578,41 @@ public class ProgrammableController {
         return studioEditorSettingsService.capabilities();
     }
 
+    @Get("/studio/settings/export")
+    @Operation(summary = "Экспорт настроек IDE-редактора",
+            description = "Экспортирует сохраненные настройки IDE для backup/restore через GUI.")
+    public Map<String, Object> exportStudioSettings(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return Map.of(
+                "settingsBySubject", studioEditorSettingsService.exportAll(),
+                "capabilities", studioEditorSettingsService.capabilities(),
+                "exportedAt", Instant.now().toString()
+        );
+    }
+
+    @Post("/studio/settings/import")
+    @Operation(summary = "Импорт настроек IDE-редактора",
+            description = "Импортирует настройки IDE из GUI backup (merge/replace режим).")
+    public Map<String, Object> importStudioSettings(HttpRequest<?> request,
+                                                    @Body Map<String, Object> payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-manage");
+        Map<String, Object> safePayload = payload == null ? Map.of() : payload;
+        boolean replaceExisting = Boolean.TRUE.equals(safePayload.get("replaceExisting"));
+        Map<String, StudioEditorSettingsDto> settingsBySubject = objectMapper.convertValue(
+                safePayload.getOrDefault("settingsBySubject", Map.of()),
+                new TypeReference<Map<String, StudioEditorSettingsDto>>() {
+                }
+        );
+        Map<String, Object> result = new java.util.LinkedHashMap<>(
+                studioEditorSettingsService.importAll(settingsBySubject, replaceExisting));
+        result.put("importedAt", Instant.now().toString());
+        return result;
+    }
+
     @Get("/studio/playbook")
     @Operation(summary = "Playbook programmable-студии",
             description = "Пошаговый операционный playbook по ключевым группам: inbox-outbox, runtime, connectors, IDE, settings, GUI operations.")
@@ -580,7 +635,7 @@ public class ProgrammableController {
 
     @Post("/studio/operations")
     @Operation(summary = "Выполнить служебную операцию studio",
-            description = "Единая точка для GUI-операций: flush outbox, recover stale inbox, clear debug history и bootstrap refresh.")
+            description = "Единая точка для GUI-операций: eventing maintenance, snapshots, bootstrap refresh и export IDE settings.")
     public Map<String, Object> executeStudioOperation(HttpRequest<?> request,
                                                       @Body StudioOperationRequest payload) {
         var subject = RequestSecurityContext.current(request)

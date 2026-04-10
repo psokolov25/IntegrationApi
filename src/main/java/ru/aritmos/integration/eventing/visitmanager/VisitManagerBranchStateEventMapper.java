@@ -358,6 +358,10 @@ public class VisitManagerBranchStateEventMapper {
         if (value == null) {
             return fallback == null ? Instant.now() : fallback;
         }
+        Instant epochParsed = parseEpochUpdatedAt(value);
+        if (epochParsed != null) {
+            return epochParsed;
+        }
         String text = String.valueOf(value);
         try {
             return Instant.parse(text);
@@ -373,6 +377,24 @@ public class VisitManagerBranchStateEventMapper {
             return ZonedDateTime.parse(text).toInstant();
         } catch (DateTimeParseException ex) {
             throw new IllegalArgumentException("payload.updatedAt должен быть в ISO-8601");
+        }
+    }
+
+
+    private Instant parseEpochUpdatedAt(Object value) {
+        if (value instanceof Number number) {
+            long epoch = number.longValue();
+            return epoch > 9_999_999_999L ? Instant.ofEpochMilli(epoch) : Instant.ofEpochSecond(epoch);
+        }
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty() || !text.matches("^-?\\d{10,16}$")) {
+            return null;
+        }
+        try {
+            long epoch = Long.parseLong(text);
+            return epoch > 9_999_999_999L ? Instant.ofEpochMilli(epoch) : Instant.ofEpochSecond(epoch);
+        } catch (NumberFormatException ex) {
+            return null;
         }
     }
 

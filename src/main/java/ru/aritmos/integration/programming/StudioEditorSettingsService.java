@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * In-memory хранение персональных настроек IDE-редактора programmable-студии.
@@ -68,19 +69,62 @@ public class StudioEditorSettingsService {
         if (request == null) {
             throw new IllegalArgumentException("payload настроек обязателен");
         }
-        String normalizedTheme = normalizeTheme(request.theme());
-        int normalizedFontSize = normalizeFontSize(request.fontSize());
-        StudioEditorSettingsDto normalized = new StudioEditorSettingsDto(
-                normalizedTheme,
-                normalizedFontSize,
-                request.autoSave(),
-                request.wordWrap(),
-                request.lastScriptId() == null ? "" : request.lastScriptId().trim(),
-                Instant.now()
-        );
+        StudioEditorSettingsDto normalized = normalizeSettings(request);
         settingsBySubject.put(subjectId, normalized);
         persistToDisk();
         return normalized;
+    }
+
+    /**
+     * Экспортирует все сохраненные настройки IDE для GUI backup/restore.
+     */
+    public Map<String, StudioEditorSettingsDto> exportAll() {
+        return settingsBySubject.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue,
+                        (left, right) -> right,
+                        LinkedHashMap::new
+                ));
+    }
+
+    /**
+     * Импортирует настройки IDE из GUI backup (c merge/replace режимом).
+     */
+    public Map<String, Object> importAll(Map<String, StudioEditorSettingsDto> imported, boolean replaceExisting) {
+        if (imported == null || imported.isEmpty()) {
+            return Map.of(
+                    "received", 0,
+                    "applied", 0,
+                    "skipped", 0,
+                    "replaceExisting", replaceExisting
+            );
+        }
+        int applied = 0;
+        int skipped = 0;
+        for (Map.Entry<String, StudioEditorSettingsDto> entry : imported.entrySet()) {
+            String subjectId = entry.getKey();
+            if (subjectId == null || subjectId.isBlank() || entry.getValue() == null) {
+                skipped++;
+                continue;
+            }
+            if (!replaceExisting && settingsBySubject.containsKey(subjectId)) {
+                skipped++;
+                continue;
+            }
+            settingsBySubject.put(subjectId, normalizeSettings(entry.getValue()));
+            applied++;
+        }
+        if (applied > 0) {
+            persistToDisk();
+        }
+        return Map.of(
+                "received", imported.size(),
+                "applied", applied,
+                "skipped", skipped,
+                "replaceExisting", replaceExisting
+        );
     }
 
     public Map<String, Object> capabilities() {
@@ -89,7 +133,21 @@ public class StudioEditorSettingsService {
                 "fontSizeMin", 10,
                 "fontSizeMax", 28,
                 "storage", "file",
-                "persistencePath", persistencePath.toString()
+                "persistencePath", persistencePath.toString(),
+                "importExportSupported", true
+        );
+    }
+
+    private StudioEditorSettingsDto normalizeSettings(StudioEditorSettingsDto request) {
+        String normalizedTheme = normalizeTheme(request.theme());
+        int normalizedFontSize = normalizeFontSize(request.fontSize());
+        return new StudioEditorSettingsDto(
+                normalizedTheme,
+                normalizedFontSize,
+                request.autoSave(),
+                request.wordWrap(),
+                request.lastScriptId() == null ? "" : request.lastScriptId().trim(),
+                Instant.now()
         );
     }
 
