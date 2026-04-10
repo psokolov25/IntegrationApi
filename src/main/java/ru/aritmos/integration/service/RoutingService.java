@@ -46,6 +46,11 @@ public class RoutingService {
         return result;
     }
 
+
+    public long aggregateRequestTimeoutMillis() {
+        return configuration.getAggregateRequestTimeoutMillis();
+    }
+
     private String firstActiveTarget() {
         return configuration.getVisitManagers().stream()
                 .filter(IntegrationGatewayConfiguration.VisitManagerInstance::isActive)

@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Оркестрация запросов к VisitManager в рамках gateway/federation.
@@ -80,7 +82,8 @@ public class GatewayService {
     }
 
     public AggregatedQueuesResponse getAggregatedQueues(String subject, List<String> branchIds) {
-        List<CompletableFuture<QueueListResponse>> futures = branchIds.stream()
+        List<String> uniqueBranchIds = uniqueBranchIds(branchIds);
+        List<CompletableFuture<QueueListResponse>> futures = uniqueBranchIds.stream()
                 .map(branchId -> CompletableFuture.supplyAsync(() -> getQueues(subject, branchId, ""), executorService))
                 .toList();
 
@@ -88,17 +91,48 @@ public class GatewayService {
         List<AggregatedQueuesResponse.BranchError> failed = new ArrayList<>();
 
         for (int i = 0; i < futures.size(); i++) {
-            String branchId = branchIds.get(i);
+            String branchId = uniqueBranchIds.get(i);
             String target = routingService.resolveTarget(branchId, "");
             try {
-                successful.add(futures.get(i).join());
+                successful.add(futures.get(i).get(routingService.aggregateRequestTimeoutMillis(), TimeUnit.MILLISECONDS));
+            } catch (TimeoutException timeoutEx) {
+                futures.get(i).cancel(true);
+                failed.add(new AggregatedQueuesResponse.BranchError(
+                        branchId,
+                        target,
+                        "Превышен timeout агрегации: " + routingService.aggregateRequestTimeoutMillis() + " мс"
+                ));
+                auditService.auditDenied("queue-view-aggregate-timeout", subject);
             } catch (Exception ex) {
-                failed.add(new AggregatedQueuesResponse.BranchError(branchId, target, ex.getMessage()));
+                failed.add(new AggregatedQueuesResponse.BranchError(branchId, target, rootMessage(ex)));
                 auditService.auditDenied("queue-view-aggregate", subject);
             }
         }
 
         return new AggregatedQueuesResponse(successful, failed, !failed.isEmpty());
+    }
+
+
+    private List<String> uniqueBranchIds(List<String> branchIds) {
+        if (branchIds == null || branchIds.isEmpty()) {
+            return List.of();
+        }
+        return branchIds.stream()
+                .map(branchId -> branchId == null ? null : branchId.trim())
+                .filter(branchId -> branchId != null && !branchId.isBlank())
+                .distinct()
+                .toList();
+    }
+
+
+    private String rootMessage(Throwable throwable) {
+        Throwable current = throwable;
+        while (current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current.getMessage() == null || current.getMessage().isBlank()
+                ? current.getClass().getSimpleName()
+                : current.getMessage();
     }
 
     public CallVisitorResponse callVisitor(String subject, String visitorId, CallVisitorRequest request, String explicitTarget) {

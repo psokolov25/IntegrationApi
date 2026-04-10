@@ -105,6 +105,8 @@ integration:
       updated-by-paths: ["data.state.updatedBy", "data.updatedBy", "data.entity.state.updatedBy", "data.entity.updatedBy", "updatedBy", "updated_by"]
       visit-manager-id-paths: ["meta.visitManagerId", "metadata.visitManagerId", "data.visitManagerId", "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"]
   queue-cache-ttl: 30s
+  aggregate-max-branches: 200
+  aggregate-request-timeout-millis: 3000
   branch-state-cache-ttl: 15s
   branch-state-event-refresh-debounce: 2s
   visit-managers:

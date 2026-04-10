@@ -18,6 +18,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 import ru.aritmos.integration.domain.AggregatedQueuesResponse;
 import ru.aritmos.integration.domain.BranchStateDto;
 import ru.aritmos.integration.domain.BranchStateUpdateRequest;
@@ -46,13 +47,16 @@ public class GatewayController {
     private final GatewayService gatewayService;
     private final VisitManagerMetricsService metricsService;
     private final AuthorizationService authorizationService;
+    private final IntegrationGatewayConfiguration configuration;
 
     public GatewayController(GatewayService gatewayService,
                              VisitManagerMetricsService metricsService,
-                             AuthorizationService authorizationService) {
+                             AuthorizationService authorizationService,
+                             IntegrationGatewayConfiguration configuration) {
         this.gatewayService = gatewayService;
         this.metricsService = metricsService;
         this.authorizationService = authorizationService;
+        this.configuration = configuration;
     }
 
     @Get("/queues{?branchId,target}")
@@ -84,7 +88,14 @@ public class GatewayController {
         List<String> parsedBranches = Arrays.stream(branchIds.split(","))
                 .map(String::trim)
                 .filter(value -> !value.isBlank())
+                .distinct()
                 .toList();
+        if (parsedBranches.isEmpty()) {
+            throw new IllegalArgumentException("Необходимо передать хотя бы один branchId в параметре branchIds");
+        }
+        if (parsedBranches.size() > configuration.getAggregateMaxBranches()) {
+            throw new IllegalArgumentException("Количество branchIds превышает лимит " + configuration.getAggregateMaxBranches());
+        }
         return gatewayService.getAggregatedQueues(subject.subjectId(), parsedBranches);
     }
 

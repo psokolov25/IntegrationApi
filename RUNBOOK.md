@@ -6,6 +6,8 @@
    - `integration.visit-managers[*].base-url`;
    - `integration.branch-routing` и `integration.branch-fallback-routing`;
    - `integration.branch-state-cache-ttl`, `integration.branch-state-event-refresh-debounce`;
+   - `integration.aggregate-max-branches` (лимит количества **уникальных** `branchIds` после нормализации в `GET /api/v1/queues/aggregate`);
+   - `integration.aggregate-request-timeout-millis` (timeout fan-out для `GET /api/v1/queues/aggregate`);
    - `integration.eventing.entity-changed-branch-mapping.*` (eventType/class/paths для гибкого маппинга `ENTITY_CHANGED` → branch-state).
 3. Проверить branch-state API (`/api/v1/branches/*`) и eventing pipeline (`/api/v1/events/*`).
 4. При проблемах консистентности branch-state:
@@ -24,7 +26,7 @@
 - Health: `GET /health`
 - Liveness: `GET /health/liveness`
 - Readiness: `GET /health/readiness`
-- `GET /health/readiness` возвращает компоненты по ключевым группам (`gateway`, `federation`, `eventing`, `security-mode`, `security`, `programmable-api`, `client-policy`, `observability`); `security` отражает корректность конфигурации режима безопасности (например, `API_KEY` без ключей -> `DOWN`, `HYBRID` без API keys и keycloak issuer -> `DEGRADED`).
+- `GET /health/readiness` возвращает компоненты по ключевым группам (`gateway`, `federation`, `aggregation`, `eventing`, `security-mode`, `security`, `programmable-api`, `client-policy`, `observability`); `security` отражает корректность конфигурации режима безопасности (например, `API_KEY` без ключей -> `DOWN`, `HYBRID` без API keys и keycloak issuer -> `DEGRADED`).
 - Итоговый readiness становится `DEGRADED`, если любой компонент имеет `DOWN` или `DEGRADED`.
 - Gateway API: `/api/v1/queues`, `/api/v1/queues/aggregate`
 - Branch-state API:
@@ -34,12 +36,15 @@
   - `GET /api/v1/branches/states`
 - Programmable: `POST /api/v1/program/{endpointId}`
 - Programmable Studio bootstrap: `GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20` (для GUI/IDE редактора: runtime, inbox/outbox, connectors, settings, tabs, `editorSettings`, `editorCapabilities`, `gui.actions`).
+- Programmable Studio dashboard: `GET /api/v1/program/studio/dashboard?debugHistoryLimit=20` (сводный GUI snapshot + connectors health + VisitManager metrics).
 - IDE editor settings API:
   - `GET /api/v1/program/studio/settings`
   - `PUT /api/v1/program/studio/settings` (theme/fontSize/autoSave/wordWrap/lastScriptId).
+  - `GET /api/v1/program/studio/settings/export` (backup настроек IDE по всем subject).
+  - `POST /api/v1/program/studio/settings/import` (restore/merge настроек IDE через GUI payload).
   - `GET /api/v1/program/studio/capabilities` (доступные темы/лимиты и путь персистентности настроек).
   - `GET /api/v1/program/studio/operations/catalog` (каталог операций и templates параметров для GUI).
-  - `POST /api/v1/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`).
+  - `POST /api/v1/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
   - `GET /api/v1/program/studio/playbook` (пошаговый операционный чек-лист по всем группам studio-фич).
 
 - ITS (integration templates) для programmable handlers:
@@ -134,17 +139,35 @@
 - Для нестандартных payload можно переопределять в конфигурации `integration.eventing.entity-changed-branch-mapping`: `wrapper-keys`, `queue-snapshot-roots`, `service-points-keys`, `queues-keys`, `visits-keys` (без изменения кода).
 - Для `*-paths` и `queue-snapshot-roots` поддерживается wildcard-сегмент `*` (пример: `payload.records.*.after_state.id`) для поиска по массивам/словарям с динамическими ключами.
 - Branch-state «скачет назад»: проверить out-of-order события и `updatedAt` в payload.
+- При одинаковом `updatedAt` кэш branch-state сохраняет уже примененное состояние (второй апдейт игнорируется), поэтому для детерминированной синхронизации источнику нужно передавать монотонный `updatedAt` на каждое изменение.
 - Для `VISIT_*` убедиться, что `occurredAt` монотонно возрастает в рамках пары `visitManagerId + branchId`; более старые события должны игнорироваться.
 - Для `VISIT_*` поддерживаются как плоские поля (`branchId`, `visitManagerId`), так и вложенные варианты (`data.branch.id`, `data.meta.visitManagerId`, snake_case), поэтому при интеграции с DataBus проверять фактическую вложенность `meta/data/...`.
+- Для `branch-state-updated`/`ENTITY_CHANGED` поле `updatedAt` можно передавать как ISO-8601, так и epoch (`seconds`/`millis`); при нестабильном формате времени на стороне источника рекомендуется унифицировать его до ISO-8601.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
 - Для точечного восстановления обработать событие через `POST /api/v1/events/replay-dlq/{eventId}`.
 - Для массового восстановления использовать `POST /api/v1/events/replay-dlq?limit=N`.
 - Для ручной очистки «залипших» событий использовать `DELETE /api/v1/events/dlq/{eventId}` или `DELETE /api/v1/events/dlq`.
 - Повторы событий: проверить `eventId` и inbox idempotency.
+- Для `GET /api/v1/queues/aggregate` входной список `branchIds` нормализуется (trim пробелов, пустые/`null` отбрасываются, дубликаты удаляются с сохранением порядка первого появления).
+- При `partial=true` из-за timeout проверить `integration.aggregate-request-timeout-millis` и latency downstream VisitManager.
+- Если после нормализации `branchIds` не остается ни одного значения, endpoint возвращает `BAD_REQUEST` с подсказкой передать хотя бы один `branchId`.
 - Ошибки downstream: проверить client-policy и circuit status.
 - Ошибки выполнения Groovy-скриптов: проверить синтаксис scriptBody, тип скрипта (`BRANCH_CACHE_QUERY`/`VISIT_MANAGER_ACTION`) и доступность Redis.
 - Для диагностики IDE/GUI редактора выполнять `GET /api/v1/program/studio/bootstrap` и сверять блоки `ide/runtime/connectors/eventing/settings/gui`.
+- Для быстрой операторской сводки использовать `GET /api/v1/program/studio/dashboard` (включает dashboard snapshot, connectors health и метрики VisitManager).
+- Для точечной диагностики использовать studio operations:
+  - `SNAPSHOT_INBOX_OUTBOX` — срез backlog inbox/outbox с фильтрацией статуса;
+  - `SNAPSHOT_VISIT_MANAGERS` — срез конфигурации VisitManager/маршрутизации;
+  - `SNAPSHOT_BRANCH_CACHE` — срез кэша отделений (total/byVisitManager/recent);
+  - `SNAPSHOT_EXTERNAL_SERVICES` — срез внешних REST-сервисов и message brokers;
+  - `SNAPSHOT_RUNTIME_SETTINGS` — runtime-срез операционных настроек панели (eventing/aggregation/branch-cache);
+  - `EXPORT_EDITOR_SETTINGS` — экспорт настроек IDE для backup;
+  - `PREVIEW_EVENTING_MAINTENANCE` — dry-run очистки inbox/outbox/DLQ/processed;
+  - `EXPORT_EVENTING_SNAPSHOT` — экспорт eventing snapshot для import/export сценариев;
+  - `DASHBOARD_SNAPSHOT` — единый сводный snapshot GUI (workspace + inbox/outbox + VisitManagers + branch-state cache + external services + runtime settings).
 - При проблемах персонализации IDE проверить `GET/PUT /api/v1/program/studio/settings` и корректность значений (`theme=dark|light|contrast`, `fontSize=10..28`).
+- Для backup/restore GUI-настроек использовать `GET /api/v1/program/studio/settings/export` и `POST /api/v1/program/studio/settings/import` (`replaceExisting=true|false`).
+- Для GUI миграции eventing состояния использовать `GET /api/v1/events/export`, `POST /api/v1/events/import/preview`, `POST /api/v1/events/import`.
 - Настройки IDE персистятся в файл `.../editor-settings.json` внутри `integration.programmable-api.script-storage.file.path` (по умолчанию `cache/program-scripts/editor-settings.json`).
 - Ошибки отправки в брокер/шину: проверить корректность `brokerId`, `topic`, тип брокера и наличие adapter-а для `message-brokers[*].type`.
 - Нет реакции на входящее сообщение: проверить matching `broker-id`/`topic`, тип скрипта `MESSAGE_BUS_REACTION` и права `programmable-script-execute`.

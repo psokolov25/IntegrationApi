@@ -44,6 +44,8 @@ public class IntegrationGatewayConfiguration {
     private EventingSettings eventing = new EventingSettings();
 
     private Duration queueCacheTtl = Duration.ofSeconds(30);
+    private int aggregateMaxBranches = 200;
+    private long aggregateRequestTimeoutMillis = 3000;
 
     private Duration branchStateCacheTtl = Duration.ofSeconds(15);
     private Duration branchStateEventRefreshDebounce = Duration.ofSeconds(2);
@@ -148,6 +150,22 @@ public class IntegrationGatewayConfiguration {
 
     public void setQueueCacheTtl(Duration queueCacheTtl) {
         this.queueCacheTtl = queueCacheTtl;
+    }
+
+    public int getAggregateMaxBranches() {
+        return aggregateMaxBranches;
+    }
+
+    public void setAggregateMaxBranches(int aggregateMaxBranches) {
+        this.aggregateMaxBranches = aggregateMaxBranches;
+    }
+
+    public long getAggregateRequestTimeoutMillis() {
+        return aggregateRequestTimeoutMillis;
+    }
+
+    public void setAggregateRequestTimeoutMillis(long aggregateRequestTimeoutMillis) {
+        this.aggregateRequestTimeoutMillis = aggregateRequestTimeoutMillis;
     }
 
     public Duration getBranchStateCacheTtl() {

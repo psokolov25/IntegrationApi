@@ -69,7 +69,7 @@ public class BranchStateCache {
         BranchStateDto normalized = normalized(state);
         AtomicBoolean applied = new AtomicBoolean(false);
         cache.compute(cacheKey, (ignored, current) -> {
-            if (current == null || isNewerOrSame(normalized, current.value())) {
+            if (current == null || isStrictlyNewer(normalized, current.value())) {
                 applied.set(true);
                 return new CacheEntry(normalized, expiresAt);
             }
@@ -108,13 +108,13 @@ public class BranchStateCache {
         return sourceVisitManagerId + ":" + branchId;
     }
 
-    private boolean isNewerOrSame(BranchStateDto incoming, BranchStateDto current) {
-        if (incoming.updatedAt() == null) {
-            return true;
-        }
+    private boolean isStrictlyNewer(BranchStateDto incoming, BranchStateDto current) {
         if (current.updatedAt() == null) {
             return true;
         }
-        return !incoming.updatedAt().isBefore(current.updatedAt());
+        if (incoming.updatedAt() == null) {
+            return false;
+        }
+        return incoming.updatedAt().isAfter(current.updatedAt());
     }
 }
