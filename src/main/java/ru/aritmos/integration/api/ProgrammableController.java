@@ -615,12 +615,15 @@ public class ProgrammableController {
 
     @Get("/studio/playbook")
     @Operation(summary = "Playbook programmable-студии",
-            description = "Пошаговый операционный playbook по ключевым группам: inbox-outbox, runtime, connectors, IDE, settings, GUI operations.")
-    public List<Map<String, Object>> studioPlaybook(HttpRequest<?> request) {
+            description = "Пошаговый операционный playbook с акцентом на основные задачи интеграции СУО с внешними службами заказчика "
+                    + "(connectors health, routing, queue smoke, branch-state sync, external REST/message bus). "
+                    + "Поддерживает сортировку по важности (sortBy=importance, по умолчанию) или исходному порядку (sortBy=order).")
+    public List<Map<String, Object>> studioPlaybook(HttpRequest<?> request,
+                                                    @QueryValue(defaultValue = "importance") String sortBy) {
         var subject = RequestSecurityContext.current(request)
                 .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
         authorizationService.requirePermission(subject, "programmable-script-execute");
-        return studioWorkspaceService.buildPlaybook();
+        return studioWorkspaceService.buildPlaybook(sortBy);
     }
 
     @Get("/studio/operations/catalog")

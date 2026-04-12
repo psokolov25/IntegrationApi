@@ -45,7 +45,7 @@
   - `GET /api/v1/program/studio/capabilities` (доступные темы/лимиты и путь персистентности настроек).
   - `GET /api/v1/program/studio/operations/catalog` (каталог операций и templates параметров для GUI).
   - `POST /api/v1/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
-  - `GET /api/v1/program/studio/playbook` (пошаговый операционный чек-лист по всем группам studio-фич).
+  - `GET /api/v1/program/studio/playbook?sortBy=importance|order` (операционный чек-лист с приоритетом базовых интеграционных задач: connectors health, routing, queue smoke, branch-state sync, внешние REST/message bus интеграции; по умолчанию сортировка по важности).
 
 - ITS (integration templates) для programmable handlers:
   - Предпросмотр: `POST /api/v1/program/templates/import/preview` (multipart `archive`).
