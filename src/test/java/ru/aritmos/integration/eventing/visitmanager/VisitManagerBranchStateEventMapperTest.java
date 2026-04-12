@@ -91,6 +91,33 @@ class VisitManagerBranchStateEventMapperTest {
     }
 
     @Test
+    void shouldMapVisitLifecycleEventFromNestedEntitiesWithBranchObject() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-3b",
+                "VISIT_REDIRECTED",
+                "vm-fallback-source",
+                Instant.parse("2026-04-10T09:10:00Z"),
+                Map.of(
+                        "data", Map.of(
+                                "entities", List.of(
+                                        Map.of(
+                                                "meta", Map.of("target_visit_manager_id", "vm-nested"),
+                                                "visit", Map.of(
+                                                        "branch", Map.of("id", "BR-ENTITY-901")
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
+
+        VisitManagerVisitEventPayload payload = mapper.mapVisitEvent(event);
+        Assertions.assertEquals("vm-nested", payload.sourceVisitManagerId());
+        Assertions.assertEquals("BR-ENTITY-901", payload.branchId());
+        Assertions.assertEquals("VISIT_REDIRECTED", payload.visitEventType());
+    }
+
+    @Test
     void shouldRecognizeAndMapEntityChangedBranchPayload() {
         IntegrationEvent event = new IntegrationEvent(
                 "evt-vm-4",
