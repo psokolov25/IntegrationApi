@@ -159,7 +159,7 @@
 - Для точечной диагностики использовать studio operations:
   - `SNAPSHOT_INBOX_OUTBOX` — срез backlog inbox/outbox с фильтрацией статуса;
   - `SNAPSHOT_VISIT_MANAGERS` — срез конфигурации VisitManager/маршрутизации;
-  - `SNAPSHOT_BRANCH_CACHE` — срез кэша отделений (total/byVisitManager/recent);
+  - `SNAPSHOT_BRANCH_CACHE` — срез кэша отделений (total/byVisitManager/recent, где `recent` отсортирован по `updatedAt` по убыванию, далее по `branchId` и `visitManagerId`);
   - `SNAPSHOT_EXTERNAL_SERVICES` — срез внешних REST-сервисов и message brokers;
   - `SNAPSHOT_RUNTIME_SETTINGS` — runtime-срез операционных настроек панели (eventing/aggregation/branch-cache);
   - `EXPORT_EDITOR_SETTINGS` — экспорт настроек IDE для backup;
