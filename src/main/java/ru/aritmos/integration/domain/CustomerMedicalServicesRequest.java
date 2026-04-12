@@ -23,7 +23,20 @@ public record CustomerMedicalServicesRequest(
         @Schema(description = "Дополнительные фильтры запроса", implementation = Object.class)
         Map<String, Object> filters,
         @Schema(description = "Дополнительные HTTP-заголовки", implementation = Object.class)
-        Map<String, String> headers
+        Map<String, String> headers,
+        @Schema(description = "Тип коннектора: REST_API (по умолчанию), DATA_BUS, MESSAGE_BROKER", example = "DATA_BUS")
+        String connectorType,
+        @Schema(description = "Идентификатор брокера/шины для DATA_BUS или MESSAGE_BROKER", example = "customer-databus")
+        String brokerId,
+        @Schema(description = "Топик/канал публикации для DATA_BUS или MESSAGE_BROKER", example = "crm.medical-services")
+        String topic,
+        @Schema(description = "Ключ сообщения для DATA_BUS или MESSAGE_BROKER", example = "medical-services-001")
+        String messageKey,
+        @Schema(description = "ID Groovy-скрипта постобработки ответа (опционально)", example = "crm-services-response-transform")
+        String responseScriptId,
+        @Schema(description = "Параметры для Groovy-скрипта постобработки", implementation = Object.class)
+        Map<String, Object> responseScriptParameters,
+        @Schema(description = "Контекст для Groovy-скрипта постобработки", implementation = Object.class)
+        Map<String, Object> responseScriptContext
 ) {
 }
-

@@ -164,6 +164,12 @@ public class GroovyScriptService {
                         (branchId, target) -> gatewayService.getBranchState(subject.subjectId(), branchId, target == null ? "" : target));
             }
             case VISIT_MANAGER_ACTION -> binding.setVariable("visitManagerInvoker", visitManagerRestInvoker);
+            case CONNECTOR_RESPONSE_TRANSFORM -> {
+                // Специальный тип для постобработки ответов коннекторов CRM/МИС/предзаписи.
+            }
+            case OPTIMAL_SERVICE_SELECTION -> {
+                // Специальный тип для выбора оптимальной услуги из списка кандидатов.
+            }
             default -> throw new IllegalArgumentException("Неподдерживаемый script type");
         }
 

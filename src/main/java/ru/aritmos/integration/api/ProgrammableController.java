@@ -29,7 +29,9 @@ import ru.aritmos.integration.domain.IntegrationTemplateExportRequest;
 import ru.aritmos.integration.domain.IntegrationTemplatePreviewDto;
 import ru.aritmos.integration.domain.CustomerLookupRequest;
 import ru.aritmos.integration.domain.CustomerMedicalServicesRequest;
+import ru.aritmos.integration.domain.CustomerOptimalServiceSelectionRequest;
 import ru.aritmos.integration.domain.CustomerPrebookingRequest;
+import ru.aritmos.integration.domain.CustomerServiceAvailabilityRequest;
 import ru.aritmos.integration.domain.ScriptExecutionRequest;
 import ru.aritmos.integration.domain.StudioEditorSettingsDto;
 import ru.aritmos.integration.domain.StudioOperationCatalogItemDto;
@@ -41,6 +43,7 @@ import ru.aritmos.integration.programming.CustomerMessageBusGateway;
 import ru.aritmos.integration.programming.CustomerMessageBusAdapter;
 import ru.aritmos.integration.programming.CustomerCrmIntegrationGateway;
 import ru.aritmos.integration.programming.ExternalRestClient;
+import ru.aritmos.integration.programming.ExternalRestCustomerCrmIntegrationGateway;
 import ru.aritmos.integration.programming.GroovyScriptService;
 import ru.aritmos.integration.programming.IntegrationTemplateArchiveService;
 import ru.aritmos.integration.programming.ProgrammableEndpointService;
@@ -701,7 +704,7 @@ public class ProgrammableController {
         var subject = RequestSecurityContext.current(request)
                 .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
         authorizationService.requirePermission(subject, "programmable-script-execute");
-        return customerCrmIntegrationGateway.identifyClient(payload);
+        return customerCrmIntegrationGateway.identifyClient(payload, subject);
     }
 
     @Post("/connectors/crm/medical-services")
@@ -712,18 +715,99 @@ public class ProgrammableController {
         var subject = RequestSecurityContext.current(request)
                 .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
         authorizationService.requirePermission(subject, "programmable-script-execute");
-        return customerCrmIntegrationGateway.fetchAvailableMedicalServices(payload);
+        return customerCrmIntegrationGateway.fetchAvailableMedicalServices(payload, subject);
+    }
+
+    @Post("/connectors/crm/medical-services-with-prerequisites")
+    @Operation(summary = "Получить услуги с обязательными предварительными услугами",
+            description = "Нормализует ответ CRM/МИС в список услуг с prerequisite-услугами, которые нужно пройти заранее.")
+    public Map<String, Object> medicalServicesWithPrerequisites(HttpRequest<?> request,
+                                                                @Body CustomerMedicalServicesRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return customerCrmIntegrationGateway.fetchMedicalServicesWithPrerequisites(payload, subject);
+    }
+
+    @Post("/connectors/crm/eligible-medical-services")
+    @Operation(summary = "Рассчитать уже доступные услуги клиента",
+            description = "На вход передает completed услуги клиента и каталог с зависимостями, на выходе возвращает уже доступные услуги.")
+    public Map<String, Object> eligibleMedicalServices(HttpRequest<?> request,
+                                                       @Body CustomerServiceAvailabilityRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return customerCrmIntegrationGateway.calculateEligibleMedicalServices(payload, subject);
     }
 
     @Post("/connectors/crm/prebooking")
-    @Operation(summary = "Получить данные предварительной записи клиента",
-            description = "Запрашивает pre-booking/предзапись во внешней CRM/МИС по идентификационной строке клиента.")
+    @Operation(summary = "Универсальный запрос предзаписи клиента",
+            description = "Универсальный сценарий CRM/МИС: получение временных окон, списка услуг (плоского или с prerequisite) и комбинированного ответа в одном API.")
     public Map<String, Object> prebookingData(HttpRequest<?> request,
                                               @Body CustomerPrebookingRequest payload) {
         var subject = RequestSecurityContext.current(request)
                 .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
         authorizationService.requirePermission(subject, "programmable-script-execute");
-        return customerCrmIntegrationGateway.fetchPrebookingData(payload);
+        return customerCrmIntegrationGateway.fetchUnifiedPrebookingData(payload, subject);
+    }
+
+    @Post("/connectors/crm/prebooking-universal")
+    @Operation(summary = "Универсальный запрос предзаписи клиента (alias)",
+            description = "Alias-эндпоинт с тем же контрактом, что и /connectors/crm/prebooking, для явного вызова универсального режима.")
+    public Map<String, Object> prebookingDataUniversal(HttpRequest<?> request,
+                                                       @Body CustomerPrebookingRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        CustomerPrebookingRequest effectivePayload = payload;
+        if (payload != null && (payload.queryMode() == null || payload.queryMode().isBlank())) {
+            effectivePayload = new CustomerPrebookingRequest(
+                    payload.serviceId(),
+                    payload.identifierType(),
+                    payload.identifierValue(),
+                    payload.path(),
+                    payload.servicesPath(),
+                    payload.timeWindowsPath(),
+                    "TIME_WINDOWS_AND_SERVICES",
+                    payload.targetServiceId(),
+                    payload.branchId(),
+                    payload.filters(),
+                    payload.headers(),
+                    payload.connectorType(),
+                    payload.brokerId(),
+                    payload.topic(),
+                    payload.messageKey(),
+                    payload.responseScriptId(),
+                    payload.responseScriptParameters(),
+                    payload.responseScriptContext()
+            );
+        }
+        return customerCrmIntegrationGateway.fetchUnifiedPrebookingData(effectivePayload, subject);
+    }
+
+    @Post("/connectors/crm/optimal-medical-service")
+    @Operation(summary = "Подобрать оптимальную услугу для клиента",
+            description = "Возвращает оптимальную услугу из списка кандидатов. По умолчанию используется формула минимизации waitingCount*standardWaitMinutes; при передаче selectionScriptId применяется кастомный Groovy-скрипт.")
+    public Map<String, Object> selectOptimalMedicalService(HttpRequest<?> request,
+                                                           @Body CustomerOptimalServiceSelectionRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return customerCrmIntegrationGateway.selectOptimalMedicalService(payload, subject);
+    }
+
+    @Get("/connectors/crm/optimal-medical-service/example-script")
+    @Operation(summary = "Пример Groovy-скрипта выбора оптимальной услуги",
+            description = "Возвращает готовый пример скрипта типа OPTIMAL_SERVICE_SELECTION для выбора услуги с минимальным прогнозируемым ожиданием (waitingCount*standardWaitMinutes).")
+    public Map<String, Object> optimalMedicalServiceExampleScript(HttpRequest<?> request) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return Map.of(
+                "scriptType", "OPTIMAL_SERVICE_SELECTION",
+                "description", "Выбор услуги с минимальным прогнозируемым временем ожидания",
+                "scriptBody", ExternalRestCustomerCrmIntegrationGateway.DEFAULT_OPTIMAL_SERVICE_SELECTION_SCRIPT
+        );
     }
 
     private List<String> supportedBrokerTypes() {
