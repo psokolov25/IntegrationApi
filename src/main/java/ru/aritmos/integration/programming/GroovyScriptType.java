@@ -6,5 +6,7 @@ package ru.aritmos.integration.programming;
 public enum GroovyScriptType {
     BRANCH_CACHE_QUERY,
     VISIT_MANAGER_ACTION,
-    MESSAGE_BUS_REACTION
+    MESSAGE_BUS_REACTION,
+    CONNECTOR_RESPONSE_TRANSFORM,
+    OPTIMAL_SERVICE_SELECTION
 }

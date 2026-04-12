@@ -20,7 +20,20 @@ public record CustomerLookupRequest(
         @Schema(description = "Дополнительные фильтры поиска", implementation = Object.class)
         Map<String, Object> filters,
         @Schema(description = "Дополнительные HTTP-заголовки", implementation = Object.class)
-        Map<String, String> headers
+        Map<String, String> headers,
+        @Schema(description = "Тип коннектора: REST_API (по умолчанию), DATA_BUS, MESSAGE_BROKER", example = "REST_API")
+        String connectorType,
+        @Schema(description = "Идентификатор брокера/шины для DATA_BUS или MESSAGE_BROKER", example = "customer-databus")
+        String brokerId,
+        @Schema(description = "Топик/канал публикации для DATA_BUS или MESSAGE_BROKER", example = "crm.identify-client")
+        String topic,
+        @Schema(description = "Ключ сообщения для DATA_BUS или MESSAGE_BROKER", example = "customer-lookup-001")
+        String messageKey,
+        @Schema(description = "ID Groovy-скрипта постобработки ответа (опционально)", example = "crm-identify-response-transform")
+        String responseScriptId,
+        @Schema(description = "Параметры для Groovy-скрипта постобработки", implementation = Object.class)
+        Map<String, Object> responseScriptParameters,
+        @Schema(description = "Контекст для Groovy-скрипта постобработки", implementation = Object.class)
+        Map<String, Object> responseScriptContext
 ) {
 }
-
