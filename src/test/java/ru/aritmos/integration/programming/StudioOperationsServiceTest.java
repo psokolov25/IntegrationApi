@@ -14,6 +14,8 @@ import ru.aritmos.integration.eventing.EventRetryService;
 import ru.aritmos.integration.eventing.EventStoreService;
 import ru.aritmos.integration.service.BranchStateCache;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -412,6 +414,144 @@ class StudioOperationsServiceTest {
         ), "tester");
         Assertions.assertEquals(false, invalidResult.get("valid"));
         Assertions.assertEquals(List.of("url"), invalidResult.get("missingRequiredProperties"));
+
+        Map<String, Object> invalidMethodResult = service.execute("VALIDATE_CONNECTOR_CONFIG", Map.of(
+                "brokerType", "WEBHOOK_HTTP",
+                "properties", Map.of("url", "https://gateway.local/events", "method", "DELETE")
+        ), "tester");
+        Assertions.assertEquals(false, invalidMethodResult.get("valid"));
+        Assertions.assertEquals(
+                List.of("Для WEBHOOK_HTTP поддерживаются только методы POST, PUT или PATCH"),
+                invalidMethodResult.get("adapterValidationErrors")
+        );
+    }
+
+    @Test
+    void shouldGenerateOpenApiGroovyClientsFromUrl(@TempDir Path tempDir) throws IOException {
+        String openApi = """
+                openapi: 3.0.1
+                info:
+                  title: VisitManager Dev API
+                  version: "1.2.3"
+                servers:
+                  - url: https://visitmanager.dev.local
+                paths:
+                  /api/v1/branches/{branchId}/state:
+                    get:
+                      operationId: getBranchState
+                      summary: Получить состояние филиала
+                    put:
+                      operationId: updateBranchState
+                      summary: Обновить состояние филиала
+                  /api/v1/queues:
+                    get:
+                      operationId: getQueues
+                      summary: Список очередей
+                """;
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/openapi.yml", exchange -> {
+            byte[] response = openApi.getBytes();
+            exchange.getResponseHeaders().add("Content-Type", "application/yaml");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            StudioOperationsService service = new StudioOperationsService(
+                    buildDispatcher(),
+                    new ScriptDebugHistoryService(),
+                    buildWorkspaceServiceWithConnectors(),
+                    new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                    buildProcessor(),
+                    new IntegrationGatewayConfiguration(),
+                    buildAdapters()
+            );
+
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/openapi.yml";
+            Map<String, Object> result = service.execute("GENERATE_OPENAPI_REST_CLIENTS", Map.of(
+                    "openApiUrl", url,
+                    "serviceId", "visit-manager-dev"
+            ), "tester");
+
+            Assertions.assertEquals("GENERATE_OPENAPI_REST_CLIENTS", result.get("operation"));
+            Map<String, Object> generated = cast(result.get("generated"));
+            Assertions.assertEquals("visit-manager-dev", generated.get("serviceId"));
+            Assertions.assertEquals("VisitManager Dev API", generated.get("serviceTitle"));
+            Assertions.assertEquals("1.2.3", generated.get("serviceVersion"));
+            List<Map<String, Object>> clients = castListOfMaps(generated.get("clients"));
+            Assertions.assertEquals(3, clients.size());
+            Assertions.assertTrue(clients.stream().anyMatch(item -> "GET".equals(item.get("httpMethod"))
+                    && "/api/v1/branches/{branchId}/state".equals(item.get("path"))));
+            Assertions.assertTrue(clients.stream().anyMatch(item -> "updateBranchState".equals(item.get("operationId"))));
+            List<Map<String, Object>> scripts = castListOfMaps(generated.get("scripts"));
+            Assertions.assertEquals(3, scripts.size());
+            Assertions.assertTrue(scripts.stream().anyMatch(item ->
+                    String.valueOf(item.get("scriptBody")).contains("externalRestClient.invoke")));
+            Assertions.assertTrue(scripts.stream().allMatch(item -> item.containsKey("saveScriptRequest")));
+            Map<String, Object> toolkit = cast(generated.get("toolkit"));
+            Assertions.assertTrue(toolkit.containsKey("connectorPresetsPreviewRequest"));
+            Assertions.assertTrue(toolkit.containsKey("connectorPresetsApplyRequest"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void shouldApplyGeneratedOpenApiToolkitToRuntime(@TempDir Path tempDir) throws IOException {
+        String openApi = """
+                openapi: 3.0.1
+                info:
+                  title: VisitManager Dev API
+                  version: "1.2.3"
+                servers:
+                  - url: https://visitmanager.dev.local
+                paths:
+                  /api/v1/queues:
+                    get:
+                      operationId: getQueues
+                      summary: Список очередей
+                """;
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/openapi.yml", exchange -> {
+            byte[] response = openApi.getBytes();
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+            StudioOperationsService service = new StudioOperationsService(
+                    buildDispatcher(),
+                    new ScriptDebugHistoryService(),
+                    buildWorkspaceServiceWithConnectors(),
+                    new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                    buildProcessor(),
+                    cfg,
+                    buildAdapters(),
+                    new InMemoryGroovyScriptStorage()
+            );
+            String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/openapi.yml";
+            Map<String, Object> generated = cast(service.execute("GENERATE_OPENAPI_REST_CLIENTS", Map.of(
+                    "openApiUrl", url,
+                    "serviceId", "visit-manager-dev"
+            ), "tester").get("generated"));
+
+            Map<String, Object> applied = service.execute("APPLY_OPENAPI_REST_CLIENTS_TOOLKIT", Map.of(
+                    "generated", generated,
+                    "replaceExisting", false
+            ), "tester");
+
+            Assertions.assertEquals("APPLY_OPENAPI_REST_CLIENTS_TOOLKIT", applied.get("operation"));
+            Assertions.assertEquals(1, applied.get("appliedExternalRestServices"));
+            Assertions.assertEquals(1, applied.get("savedScripts"));
+            Assertions.assertEquals("visit-manager-dev",
+                    cfg.getProgrammableApi().getExternalRestServices().get(0).getId());
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test

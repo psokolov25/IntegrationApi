@@ -12,6 +12,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 
 /**
  * Адаптер публикации сообщений в HTTP webhook endpoint.
@@ -20,6 +22,7 @@ import java.util.Map;
 public class HttpWebhookMessageBusAdapter implements CustomerMessageBusAdapter {
 
     private static final int DEFAULT_TIMEOUT_SECONDS = 10;
+    private static final int MAX_TIMEOUT_SECONDS = 120;
     private static final List<String> SUPPORTED_TYPES = List.of("WEBHOOK_HTTP", "HTTP_WEBHOOK", "WEBHOOK", "WEBHOOK_JSON");
 
     private final ObjectMapper objectMapper;
@@ -65,13 +68,42 @@ public class HttpWebhookMessageBusAdapter implements CustomerMessageBusAdapter {
     }
 
     @Override
+    public List<String> validateProperties(Map<String, String> properties) {
+        List<String> violations = new java.util.ArrayList<>();
+        try {
+            normalizeMethod(properties == null ? null : properties.get("method"));
+        } catch (IllegalArgumentException ex) {
+            violations.add(ex.getMessage());
+        }
+        String timeoutRaw = properties == null ? null : properties.get("timeoutSeconds");
+        if (timeoutRaw != null && !timeoutRaw.isBlank()) {
+            try {
+                int timeout = Integer.parseInt(timeoutRaw);
+                if (timeout < 1 || timeout > MAX_TIMEOUT_SECONDS) {
+                    violations.add("timeoutSeconds должен быть в диапазоне 1.." + MAX_TIMEOUT_SECONDS);
+                }
+            } catch (NumberFormatException ex) {
+                violations.add("timeoutSeconds должен быть целым числом");
+            }
+        }
+        if (properties != null) {
+            properties.entrySet().stream()
+                    .filter(entry -> entry.getKey() != null
+                            && entry.getKey().regionMatches(true, 0, "header.", 0, "header.".length()))
+                    .filter(entry -> entry.getKey().substring("header.".length()).trim().isBlank())
+                    .forEach(entry -> violations.add("Некорректный header key '" + entry.getKey() + "': имя заголовка пустое"));
+        }
+        return violations;
+    }
+
+    @Override
     public Map<String, Object> publish(IntegrationGatewayConfiguration.MessageBrokerSettings broker,
                                        BrokerMessageRequest message) {
         String targetUrl = broker.getProperties().get("url");
         if (targetUrl == null || targetUrl.isBlank()) {
             throw new IllegalArgumentException("Для WEBHOOK_HTTP требуется свойство broker.properties.url");
         }
-        String method = broker.getProperties().getOrDefault("method", "POST").toUpperCase();
+        String method = normalizeMethod(broker.getProperties().get("method"));
         int timeoutSeconds = parseTimeout(broker.getProperties().get("timeoutSeconds"));
         String payloadJson = writeJson(Map.of(
                 "topic", message.topic(),
@@ -85,6 +117,7 @@ public class HttpWebhookMessageBusAdapter implements CustomerMessageBusAdapter {
                 .uri(URI.create(targetUrl))
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("Content-Type", "application/json");
+        resolveAdditionalHeaders(broker.getProperties()).forEach(builder::header);
 
         HttpRequest request = switch (method) {
             case "PUT" -> builder.PUT(HttpRequest.BodyPublishers.ofString(payloadJson)).build();
@@ -112,10 +145,22 @@ public class HttpWebhookMessageBusAdapter implements CustomerMessageBusAdapter {
             return DEFAULT_TIMEOUT_SECONDS;
         }
         try {
-            return Math.max(1, Integer.parseInt(raw));
+            int parsed = Integer.parseInt(raw);
+            return Math.max(1, Math.min(parsed, MAX_TIMEOUT_SECONDS));
         } catch (NumberFormatException ex) {
             return DEFAULT_TIMEOUT_SECONDS;
         }
+    }
+
+    private String normalizeMethod(String rawMethod) {
+        if (rawMethod == null || rawMethod.isBlank()) {
+            return "POST";
+        }
+        String normalized = rawMethod.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("POST", "PUT", "PATCH").contains(normalized)) {
+            throw new IllegalArgumentException("Для WEBHOOK_HTTP поддерживаются только методы POST, PUT или PATCH");
+        }
+        return normalized;
     }
 
     private String writeJson(Map<String, Object> value) {
@@ -124,6 +169,29 @@ public class HttpWebhookMessageBusAdapter implements CustomerMessageBusAdapter {
         } catch (Exception ex) {
             throw new IllegalArgumentException("Payload webhook не сериализуется в JSON", ex);
         }
+    }
+
+    private Map<String, String> resolveAdditionalHeaders(Map<String, String> properties) {
+        if (properties == null || properties.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, String> headers = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : properties.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            if (key == null || value == null || value.isBlank()) {
+                continue;
+            }
+            if (!key.regionMatches(true, 0, "header.", 0, "header.".length())) {
+                continue;
+            }
+            String headerName = key.substring("header.".length()).trim();
+            if (headerName.isBlank() || "content-type".equals(headerName.toLowerCase(Locale.ROOT))) {
+                continue;
+            }
+            headers.put(headerName, value);
+        }
+        return headers;
     }
 
     private String truncate(String value, int limit) {

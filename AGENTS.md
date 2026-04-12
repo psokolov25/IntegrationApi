@@ -9,6 +9,10 @@
    - REST-контракты по `openapi.yml`;
    - структуру payload событий DataBus (`VISIT_*`, branch-state и вложенные `meta/data/...` поля);
    - модели `Branch`/`Visit` при изменении мапперов.
+   - для актуализации programmable Groovy REST-клиентов использовать studio-операцию
+     `GENERATE_OPENAPI_REST_CLIENTS` по URL/пути `openapi.yml` (генерация списка методов + шаблонов скриптов для IDE).
+   - для ускоренного ввода в эксплуатацию generated-набора использовать `APPLY_OPENAPI_REST_CLIENTS_TOOLKIT`
+     (автоприменение external REST service + generated scripts в runtime IDE).
 7. При изменении event-driven синхронизации branch-state обязательно:
    - добавлять/обновлять unit-тесты на маппинг payload;
    - проверять поведение debounce/out-of-order;

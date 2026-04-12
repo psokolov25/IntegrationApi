@@ -26,6 +26,14 @@ public interface CustomerMessageBusAdapter {
         return List.of();
     }
 
+    /**
+     * Дополнительная adapter-specific валидация свойств брокера.
+     * Возвращает список ошибок в свободной форме; пустой список означает валидную конфигурацию.
+     */
+    default List<String> validateProperties(Map<String, String> properties) {
+        return List.of();
+    }
+
     Map<String, Object> publish(IntegrationGatewayConfiguration.MessageBrokerSettings broker,
                                 BrokerMessageRequest message);
 }
