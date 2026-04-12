@@ -515,6 +515,8 @@ public class IntegrationGatewayConfiguration {
                 "queue_size"
         );
         private List<String> updatedAtPaths = List.of(
+                "newValue.updatedAt",
+                "oldValue.updatedAt",
                 "data.state.updatedAt",
                 "data.updatedAt",
                 "data.entity.state.updatedAt",
@@ -533,6 +535,8 @@ public class IntegrationGatewayConfiguration {
         private List<String> visitManagerIdPaths = List.of(
                 "meta.visitManagerId",
                 "metadata.visitManagerId",
+                "data.meta.visitManagerId",
+                "data.meta.targetVisitManagerId",
                 "data.visitManagerId",
                 "data.targetVisitManagerId",
                 "visitManagerId",

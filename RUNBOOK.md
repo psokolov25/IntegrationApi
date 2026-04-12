@@ -147,7 +147,7 @@
 - Проверить реестр брокеров/шин `integration.programmable-api.message-brokers[*]` и типы adapter-ов.
 - Для `WEBHOOK_HTTP`/`HTTP_WEBHOOK` в `message-brokers[*].properties` обязательно задать:
   - `url` — endpoint webhook;
-  - опционально `method` (`POST|PUT|PATCH`) и `timeoutSeconds`.
+  - опционально `method` (`POST|PUT|PATCH`, иные значения отклоняются валидацией), `timeoutSeconds` и custom headers через префикс `header.` (например, `header.Authorization=Bearer ...`).
 - Проверить роутинг реакций на входящие сообщения `integration.programmable-api.message-reactions[*]` (broker-id/topic/script-id).
 - При анализе ошибок использовать поля `code/status/method/path/traceId` из `ErrorResponse`.
 - Для совместимости с VisitManager сверять текущие контракты по `openapi.yml` (ветка `dev`).
@@ -161,6 +161,7 @@
   и поле аудитории `meta.targetSystems` в payload исходного события.
 - Branch-state «застывает»: проверить, что приходят события `branch-state-updated`/`VISIT_*`, и нет ли слишком большого debounce-окна.
 - Branch-state не обновляется по `ENTITY_CHANGED`: проверить совпадение `class-name-paths` + `accepted-class-names`, и что `branch-id/status/active-window` доступны по настроенным paths. Если в payload приходит snapshot (`oldValue/newValue`) без канонических полей branch-state, используется fallback: `branchId` из `newValue.id`, `activeWindow` из `newValue.activeWindow|resetTime`, `queueSize` из суммарного числа `servicePoints[*].visits`, `status=UNKNOWN`.
+- Для `ENTITY_CHANGED` по умолчанию также поддерживаются `data.meta.visitManagerId|data.meta.targetVisitManagerId` и `newValue.updatedAt|oldValue.updatedAt`; при расхождении времени/источника филиала сверять эти поля в payload.
 - Если payload содержит коллекции/неоднородную вложенность (например, `data.entities[*]`, snake_case/kebab-case ключи), маппер branch-state выполняет нормализацию ключей и рекурсивный поиск по path, поэтому при диагностике нужно проверить фактическое расположение данных, а не только «плоские» пути из примеров.
 - Если `servicePoints` отсутствуют, fallback `queueSize` может вычисляться по `queues[*].visits`; при расхождении числа клиентов с UI сверять оба источника (`servicePoints` и `queues`) в snapshot.
 - Для нестандартных payload можно переопределять в конфигурации `integration.eventing.entity-changed-branch-mapping`: `wrapper-keys`, `queue-snapshot-roots`, `service-points-keys`, `queues-keys`, `visits-keys` (без изменения кода).
@@ -197,9 +198,18 @@
   `GET /api/v1/program/connectors/catalog` и сверять `supportedBrokerProfiles` (type/description/propertyTemplate).
 - Для точечного предпросмотра конкретного типа шины использовать
   `POST /api/v1/program/studio/operations` с `operation=PREVIEW_CONNECTOR_PROFILE` и `brokerType`.
+- Для синхронизации Groovy REST-клиентов с актуальным OpenAPI внешнего сервиса (например, VisitManager) использовать
+  `POST /api/v1/program/studio/operations` с `operation=GENERATE_OPENAPI_REST_CLIENTS`
+  (`openApiUrl` + опциональный `serviceId`), затем использовать `generated.toolkit`:
+  - `connectorPresetsPreviewRequest` / `connectorPresetsApplyRequest` для регистрации REST service;
+  - `scripts[*].saveScriptRequest` для пакетной загрузки скриптов в IDE/Script API.
+- Для one-shot применения сгенерированного набора (REST service + scripts) использовать
+  `POST /api/v1/program/studio/operations` с `operation=APPLY_OPENAPI_REST_CLIENTS_TOOLKIT`
+  (`generated` из предыдущего шага + `replaceExisting=true|false`).
 - Перед включением нового broker в прод-контур проверять параметры через
   `POST /api/v1/program/studio/operations` с `operation=VALIDATE_CONNECTOR_CONFIG`
-  (`brokerType` + `properties`) и устранять `missingRequiredProperties`.
+  (`brokerType` + `properties`) и устранять `missingRequiredProperties` и `adapterValidationErrors`
+  (например, неподдерживаемый `method`, невалидный `timeoutSeconds`).
 - Для миграции/backup-конфигураций внешних коннекторов использовать:
   - `operation=EXPORT_CONNECTOR_PRESETS` (экспорт текущих REST/broker presets + profiles + metadata `formatVersion/exportedAt`);
   - `operation=IMPORT_CONNECTOR_PRESETS_PREVIEW` (dry-run проверка импортируемого набора: `valid`, `duplicateInImport`, `conflictsWithExisting`, итоговый флаг `summary.importable`).

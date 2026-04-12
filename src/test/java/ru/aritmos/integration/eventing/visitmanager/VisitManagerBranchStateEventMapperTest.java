@@ -410,4 +410,35 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals("BR-WILDCARD-1", mapped.branchId());
         Assertions.assertEquals(1, mapped.queueSize());
     }
+
+    @Test
+    void shouldUseEntityChangedDefaultsForNestedMetaVisitManagerAndNewValueUpdatedAt() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-14",
+                "ENTITY_CHANGED",
+                "vm-fallback",
+                Instant.parse("2026-04-09T11:45:00Z"),
+                Map.of(
+                        "className", "Branch",
+                        "data", Map.of(
+                                "meta", Map.of("targetVisitManagerId", "vm-nested-meta"),
+                                "entity", Map.of("id", "BR-NESTED-META-1")
+                        ),
+                        "newValue", Map.of(
+                                "id", "BR-NESTED-META-1",
+                                "status", "OPEN",
+                                "activeWindow", "08:00-19:00",
+                                "queueSize", 6,
+                                "updatedAt", "2026-04-09T11:44:55Z",
+                                "updatedBy", "entity-changed-sync"
+                        )
+                )
+        );
+
+        VisitManagerBranchStateEventPayload mapped = mapper.mapEntityChangedBranch(event);
+        Assertions.assertEquals("vm-nested-meta", mapped.sourceVisitManagerId());
+        Assertions.assertEquals(Instant.parse("2026-04-09T11:44:55Z"), mapped.updatedAt());
+        Assertions.assertEquals("entity-changed-sync", mapped.updatedBy());
+        Assertions.assertEquals("BR-NESTED-META-1", mapped.branchId());
+    }
 }

@@ -1,6 +1,7 @@
 package ru.aritmos.integration.programming;
 
 import jakarta.inject.Singleton;
+import jakarta.inject.Inject;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 import ru.aritmos.integration.domain.StudioOperationCatalogItemDto;
 import ru.aritmos.integration.eventing.EventDispatcherService;
@@ -27,14 +28,17 @@ public class StudioOperationsService {
     private final ProgrammableHttpExchangeProcessor httpExchangeProcessor;
     private final IntegrationGatewayConfiguration configuration;
     private final List<CustomerMessageBusAdapter> messageBusAdapters;
+    private final GroovyScriptStorage scriptStorage;
 
+    @Inject
     public StudioOperationsService(EventDispatcherService eventDispatcherService,
                                    ScriptDebugHistoryService scriptDebugHistoryService,
                                    StudioWorkspaceService studioWorkspaceService,
                                    StudioEditorSettingsService studioEditorSettingsService,
                                    ProgrammableHttpExchangeProcessor httpExchangeProcessor,
                                    IntegrationGatewayConfiguration configuration,
-                                   List<CustomerMessageBusAdapter> messageBusAdapters) {
+                                   List<CustomerMessageBusAdapter> messageBusAdapters,
+                                   GroovyScriptStorage scriptStorage) {
         this.eventDispatcherService = eventDispatcherService;
         this.scriptDebugHistoryService = scriptDebugHistoryService;
         this.studioWorkspaceService = studioWorkspaceService;
@@ -42,6 +46,18 @@ public class StudioOperationsService {
         this.httpExchangeProcessor = httpExchangeProcessor;
         this.configuration = configuration;
         this.messageBusAdapters = messageBusAdapters;
+        this.scriptStorage = scriptStorage;
+    }
+
+    StudioOperationsService(EventDispatcherService eventDispatcherService,
+                            ScriptDebugHistoryService scriptDebugHistoryService,
+                            StudioWorkspaceService studioWorkspaceService,
+                            StudioEditorSettingsService studioEditorSettingsService,
+                            ProgrammableHttpExchangeProcessor httpExchangeProcessor,
+                            IntegrationGatewayConfiguration configuration,
+                            List<CustomerMessageBusAdapter> messageBusAdapters) {
+        this(eventDispatcherService, scriptDebugHistoryService, studioWorkspaceService, studioEditorSettingsService,
+                httpExchangeProcessor, configuration, messageBusAdapters, new InMemoryGroovyScriptStorage());
     }
 
     public Map<String, Object> execute(String operationRaw, Map<String, Object> parameters, String subjectId) {
@@ -238,14 +254,38 @@ public class StudioOperationsService {
                         .filter(key -> !templateKeys.contains(key))
                         .sorted()
                         .toList();
+                List<String> adapterValidationErrors = adapterPropertyViolations(brokerType, properties);
                 yield Map.of(
                         "operation", operation.name(),
                         "brokerType", brokerType,
-                        "valid", missingRequired.isEmpty(),
+                        "valid", missingRequired.isEmpty() && adapterValidationErrors.isEmpty(),
                         "missingRequiredProperties", missingRequired,
+                        "adapterValidationErrors", adapterValidationErrors,
                         "unknownProperties", unknownKeys,
                         "propertyTemplateKeys", templateKeys,
                         "profile", profile
+                );
+            }
+            case GENERATE_OPENAPI_REST_CLIENTS -> {
+                String openApiUrl = stringParam(args.get("openApiUrl"), "");
+                String serviceIdHint = stringParam(args.get("serviceId"), "");
+                Map<String, Object> generated = OpenApiGroovyClientGenerator.generate(openApiUrl, serviceIdHint);
+                yield Map.of(
+                        "operation", operation.name(),
+                        "generated", generated
+                );
+            }
+            case APPLY_OPENAPI_REST_CLIENTS_TOOLKIT -> {
+                Map<String, Object> generated = objectMapParam(args.get("generated"));
+                boolean replaceExisting = booleanParam(args.get("replaceExisting"), false);
+                int savedScripts = applyGeneratedOpenApiScripts(generated, replaceExisting, subjectId);
+                int appliedServices = applyGeneratedOpenApiExternalService(generated, replaceExisting);
+                yield Map.of(
+                        "operation", operation.name(),
+                        "replaceExisting", replaceExisting,
+                        "appliedExternalRestServices", appliedServices,
+                        "savedScripts", savedScripts,
+                        "serviceId", stringParam(generated.get("serviceId"), "")
                 );
             }
             case EXPORT_CONNECTOR_PRESETS -> {
@@ -284,6 +324,7 @@ public class StudioOperationsService {
                             List<String> missing = requiredProperties.stream()
                                     .filter(key -> !properties.containsKey(key) || properties.get(key).isBlank())
                                     .toList();
+                            List<String> adapterValidationErrors = adapterPropertyViolations(brokerType, properties);
                             boolean duplicateInImport = duplicateBrokerIds.contains(brokerId);
                             boolean conflictsWithExisting = existingBrokerIds.contains(brokerId);
                             boolean profileFound = !"Профиль не найден, используйте connectors/catalog для полного списка"
@@ -293,8 +334,10 @@ public class StudioOperationsService {
                                     "type", brokerType,
                                     "valid", !brokerId.isBlank() && !brokerType.isBlank()
                                             && missing.isEmpty()
+                                            && adapterValidationErrors.isEmpty()
                                             && !duplicateInImport,
                                     "missingRequiredProperties", missing,
+                                    "adapterValidationErrors", adapterValidationErrors,
                                     "profileFound", profileFound,
                                     "duplicateInImport", duplicateInImport,
                                     "conflictsWithExisting", conflictsWithExisting
@@ -642,6 +685,15 @@ public class StudioOperationsService {
                 ));
     }
 
+    private List<String> adapterPropertyViolations(String brokerType, Map<String, String> properties) {
+        return messageBusAdapters.stream()
+                .filter(adapter -> adapter.supports(brokerType))
+                .flatMap(adapter -> adapter.validateProperties(properties).stream())
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     @SuppressWarnings("unchecked")
     private List<String> stringList(Object raw) {
         if (!(raw instanceof List<?> list)) {
@@ -748,6 +800,53 @@ public class StudioOperationsService {
         return applied;
     }
 
+    private int applyGeneratedOpenApiExternalService(Map<String, Object> generated, boolean replaceExisting) {
+        Map<String, Object> externalPreset = objectMapParam(generated.get("externalRestServicePreset"));
+        if (externalPreset.isEmpty()) {
+            return 0;
+        }
+        return applyExternalRestServices(List.of(externalPreset), replaceExisting);
+    }
+
+    private int applyGeneratedOpenApiScripts(Map<String, Object> generated, boolean replaceExisting, String subjectId) {
+        List<Map<String, Object>> scripts = mapListParam(generated.get("scripts"));
+        int applied = 0;
+        for (Map<String, Object> script : scripts) {
+            Map<String, Object> saveRequest = objectMapParam(script.get("saveScriptRequest"));
+            String scriptId = stringParam(saveRequest.get("scriptId"), stringParam(script.get("scriptId"), ""));
+            if (scriptId.isBlank()) {
+                continue;
+            }
+            if (!replaceExisting && scriptStorage.get(scriptId) != null) {
+                continue;
+            }
+            String scriptBody = stringParam(saveRequest.get("scriptBody"), stringParam(script.get("scriptBody"), ""));
+            if (scriptBody.isBlank()) {
+                continue;
+            }
+            String description = stringParam(saveRequest.get("description"), "OpenAPI generated script");
+            GroovyScriptType type = parseScriptType(stringParam(saveRequest.get("type"), "VISIT_MANAGER_ACTION"));
+            scriptStorage.save(new StoredGroovyScript(
+                    scriptId,
+                    type,
+                    scriptBody,
+                    description,
+                    Instant.now(),
+                    subjectId
+            ));
+            applied++;
+        }
+        return applied;
+    }
+
+    private GroovyScriptType parseScriptType(String rawType) {
+        try {
+            return GroovyScriptType.valueOf(rawType == null ? "VISIT_MANAGER_ACTION" : rawType.trim().toUpperCase());
+        } catch (Exception ex) {
+            return GroovyScriptType.VISIT_MANAGER_ACTION;
+        }
+    }
+
     private Map<String, Object> exportConnectorPresets() {
         List<IntegrationGatewayConfiguration.ExternalRestServiceSettings> externalRestServices =
                 configuration.getProgrammableApi().getExternalRestServices();
@@ -841,6 +940,26 @@ public class StudioOperationsService {
         VALIDATE_CONNECTOR_CONFIG("Проверить набор свойств коннектора по профилю brokerType", Map.of(
                 "brokerType", "WEBHOOK_HTTP",
                 "properties", Map.of("url", "https://gateway.customer.local/integration/events", "method", "POST")
+        )),
+        GENERATE_OPENAPI_REST_CLIENTS("Сгенерировать Groovy REST-клиенты из OpenAPI URL/файла для IDE", Map.of(
+                "openApiUrl", "https://visitmanager.local/openapi.yml",
+                "serviceId", "visit-manager"
+        )),
+        APPLY_OPENAPI_REST_CLIENTS_TOOLKIT("Применить generated toolkit OpenAPI-клиентов (REST service + scripts)", Map.of(
+                "replaceExisting", false,
+                "generated", Map.of(
+                        "serviceId", "visit-manager",
+                        "externalRestServicePreset", Map.of("id", "visit-manager", "baseUrl", "https://visitmanager.local"),
+                        "scripts", List.of(Map.of(
+                                "scriptId", "openapi-visit-manager-get-queues",
+                                "saveScriptRequest", Map.of(
+                                        "scriptId", "openapi-visit-manager-get-queues",
+                                        "type", "VISIT_MANAGER_ACTION",
+                                        "description", "OpenAPI generated script",
+                                        "scriptBody", "return externalRestClient.invoke('visit-manager', 'GET', '/api/v1/queues', payload instanceof Map ? payload : [:], params.headers instanceof Map ? params.headers : [:])"
+                                )
+                        ))
+                )
         )),
         EXPORT_CONNECTOR_PRESETS("Экспортировать текущие presets коннекторов (REST/broker/profiles) для GUI backup", Map.of()),
         IMPORT_CONNECTOR_PRESETS_PREVIEW("Предпросмотр импортируемых presets коннекторов без применения", Map.of(

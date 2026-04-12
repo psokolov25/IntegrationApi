@@ -122,6 +122,10 @@ class StudioWorkspaceServiceTest {
         Assertions.assertTrue(actions.stream()
                 .anyMatch(action -> "studio.connector.profile.validate".equals(action.get("id"))));
         Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.openapi.clients.generate".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.openapi.clients.apply".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
                 .anyMatch(action -> "studio.connector.presets.export".equals(action.get("id"))));
         Assertions.assertTrue(actions.stream()
                 .anyMatch(action -> "studio.connector.presets.import.preview".equals(action.get("id"))));
