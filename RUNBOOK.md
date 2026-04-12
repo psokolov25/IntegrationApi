@@ -142,7 +142,7 @@
 - При одинаковом `updatedAt` кэш branch-state сохраняет уже примененное состояние (второй апдейт игнорируется), поэтому для детерминированной синхронизации источнику нужно передавать монотонный `updatedAt` на каждое изменение.
 - Для `VISIT_*` убедиться, что `occurredAt` монотонно возрастает в рамках пары `visitManagerId + branchId`; более старые события должны игнорироваться.
 - Для `VISIT_*` debounce/out-of-order трекинг очищает устаревшие ключи автоматически (retention = `max(1 минута, debounce * 10)`); при редких событиях по филиалу после паузы это штатное поведение и не требует ручной очистки.
-- Для `VISIT_*` поддерживаются как плоские поля (`branchId`, `visitManagerId`), так и вложенные варианты (`data.branch.id`, `data.meta.visitManagerId`, snake_case), поэтому при интеграции с DataBus проверять фактическую вложенность `meta/data/...`.
+- Для `VISIT_*` поддерживаются как плоские поля (`branchId`, `visitManagerId`), так и вложенные варианты (`data.branch.id`, `data.visit.branch.id`, `data.entities[*].visit.branch.id`, `data.meta.visitManagerId`, snake_case), поэтому при интеграции с DataBus проверять фактическую вложенность `meta/data/...`.
 - Для `branch-state-updated`/`ENTITY_CHANGED` поле `updatedAt` можно передавать как ISO-8601, так и epoch (`seconds`/`millis`); при нестабильном формате времени на стороне источника рекомендуется унифицировать его до ISO-8601.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
 - Для точечного восстановления обработать событие через `POST /api/v1/events/replay-dlq/{eventId}`.
