@@ -20,14 +20,22 @@ public class ExternalRestClient {
 
     private final IntegrationGatewayConfiguration configuration;
     private final ObjectMapper objectMapper;
+    private final ProgrammableHttpExchangeProcessor exchangeProcessor;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
     public ExternalRestClient(IntegrationGatewayConfiguration configuration,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              ProgrammableHttpExchangeProcessor exchangeProcessor) {
         this.configuration = configuration;
         this.objectMapper = objectMapper;
+        this.exchangeProcessor = exchangeProcessor;
+    }
+
+    ExternalRestClient(IntegrationGatewayConfiguration configuration,
+                       ObjectMapper objectMapper) {
+        this(configuration, objectMapper, new ProgrammableHttpExchangeProcessor(configuration, objectMapper));
     }
 
     public Map<String, Object> invoke(String serviceId,
@@ -53,10 +61,12 @@ public class ExternalRestClient {
         if (headers != null) {
             mergedHeaders.putAll(headers);
         }
+        mergedHeaders = exchangeProcessor.enrichHeaders(mergedHeaders, ProgrammableHttpExchangeProcessor.DIRECTION_OUTBOUND_EXTERNAL);
         mergedHeaders.forEach(builder::header);
 
         String normalizedMethod = method == null ? "GET" : method.toUpperCase();
-        String jsonBody = body == null ? "" : writeBody(body);
+        Map<String, Object> enrichedBody = exchangeProcessor.enrichBody(body, ProgrammableHttpExchangeProcessor.DIRECTION_OUTBOUND_EXTERNAL);
+        String jsonBody = enrichedBody == null || enrichedBody.isEmpty() ? "" : writeBody(enrichedBody);
         HttpRequest request = switch (normalizedMethod) {
             case "POST" -> builder.POST(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
             case "PUT" -> builder.PUT(HttpRequest.BodyPublishers.ofString(jsonBody)).build();
@@ -67,12 +77,9 @@ public class ExternalRestClient {
 
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            return Map.of(
-                    "serviceId", serviceId,
-                    "status", response.statusCode(),
-                    "body", response.body(),
-                    "headers", response.headers().map()
-            );
+            Map<String, Object> processed = new HashMap<>(exchangeProcessor.processResponse(response));
+            processed.put("serviceId", serviceId);
+            return Map.copyOf(processed);
         } catch (Exception ex) {
             throw new IllegalStateException("Ошибка вызова внешнего REST сервиса", ex);
         }

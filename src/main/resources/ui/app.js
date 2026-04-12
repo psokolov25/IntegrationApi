@@ -2,7 +2,177 @@ const defaultStudioOperationsCatalog = [
     {operation: "FLUSH_OUTBOX", description: "Повторно отправить pending/failed outbox-сообщения", parameterTemplate: {limit: 100}},
     {operation: "RECOVER_STALE_INBOX", description: "Перевести stale PROCESSING inbox-записи в FAILED", parameterTemplate: {}},
     {operation: "CLEAR_DEBUG_HISTORY", description: "Очистить debug history (весь или по scriptId)", parameterTemplate: {scriptId: ""}},
-    {operation: "REFRESH_BOOTSTRAP", description: "Получить свежий studio bootstrap snapshot", parameterTemplate: {debugHistoryLimit: 20}}
+    {operation: "REFRESH_BOOTSTRAP", description: "Получить свежий studio bootstrap snapshot", parameterTemplate: {debugHistoryLimit: 20}},
+    {
+        operation: "EXPORT_HTTP_PROCESSING_PROFILE",
+        description: "Экспорт профиля programmable HTTP processing",
+        parameterTemplate: {}
+    },
+    {
+        operation: "IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW",
+        description: "Предпросмотр импортируемого профиля programmable HTTP processing",
+        parameterTemplate: {
+            httpProcessingProfile: {
+                enabled: true,
+                addDirectionHeader: true,
+                directionHeaderName: "X-Integration-Direction",
+                requestEnvelopeEnabled: true,
+                parseJsonBody: true,
+                responseBodyMaxChars: 2000
+            }
+        }
+    },
+    {
+        operation: "IMPORT_HTTP_PROCESSING_PROFILE_APPLY",
+        description: "Применение импортируемого профиля programmable HTTP processing",
+        parameterTemplate: {
+            httpProcessingProfile: {
+                enabled: true,
+                addDirectionHeader: true,
+                directionHeaderName: "X-Integration-Direction",
+                requestEnvelopeEnabled: true,
+                parseJsonBody: true,
+                responseBodyMaxChars: 2000
+            }
+        }
+    },
+    {
+        operation: "PREVIEW_HTTP_PROCESSING",
+        description: "Предпросмотр programmable HTTP processing (headers/body/response)",
+        parameterTemplate: {
+            direction: "OUTBOUND_EXTERNAL",
+            headers: {"X-Trace": "demo"},
+            body: {demo: true},
+            responseStatus: 200,
+            responseBody: "{\"ok\":true}",
+            responseHeaders: {"Content-Type": ["application/json"]}
+        }
+    },
+    {
+        operation: "PREVIEW_HTTP_PROCESSING_MATRIX",
+        description: "Сравнить обработку HTTP по всем направлениям (наружу/внутрь СУО)",
+        parameterTemplate: {
+            headers: {"X-Trace": "demo"},
+            body: {demo: true},
+            responseStatus: 200,
+            responseBody: "{\"ok\":true}",
+            responseHeaders: {"Content-Type": ["application/json"]}
+        }
+    },
+    {
+        operation: "PREVIEW_CONNECTOR_PROFILE",
+        description: "Предпросмотр профиля broker/шины для GUI настройки",
+        parameterTemplate: {
+            brokerType: "KAFKA"
+        }
+    },
+    {
+        operation: "VALIDATE_CONNECTOR_CONFIG",
+        description: "Проверка свойств connector по broker profile",
+        parameterTemplate: {
+            brokerType: "WEBHOOK_HTTP",
+            properties: {
+                url: "https://gateway.customer.local/integration/events",
+                method: "POST"
+            }
+        }
+    },
+    {
+        operation: "EXPORT_CONNECTOR_PRESETS",
+        description: "Экспорт presets коннекторов (REST/broker/profiles)",
+        parameterTemplate: {}
+    },
+    {
+        operation: "IMPORT_CONNECTOR_PRESETS_PREVIEW",
+        description: "Dry-run проверка импортируемых presets коннекторов",
+        parameterTemplate: {
+            messageBrokers: [
+                {id: "webhook-bus", type: "WEBHOOK_HTTP", properties: {url: "https://gateway.customer.local/events"}}
+            ],
+            externalRestServices: [
+                {id: "crm", baseUrl: "https://crm.customer.local"}
+            ]
+        }
+    },
+    {
+        operation: "IMPORT_CONNECTOR_PRESETS_APPLY",
+        description: "Применение импортируемых presets (после preview)",
+        parameterTemplate: {
+            replaceExisting: false,
+            messageBrokers: [
+                {id: "webhook-bus", type: "WEBHOOK_HTTP", properties: {url: "https://gateway.customer.local/events"}}
+            ],
+            externalRestServices: [
+                {id: "crm", baseUrl: "https://crm.customer.local"}
+            ]
+        }
+    },
+    {
+        operation: "IMPORT_CONNECTOR_PRESETS_DIFF",
+        description: "Сравнение импортируемых presets с текущим конфигом",
+        parameterTemplate: {
+            messageBrokers: [
+                {id: "webhook-bus", type: "WEBHOOK_HTTP", properties: {url: "https://gateway.customer.local/events"}}
+            ],
+            externalRestServices: [
+                {id: "crm", baseUrl: "https://crm.customer.local"}
+            ]
+        }
+    },
+    {
+        operation: "EXPORT_INTEGRATION_CONNECTOR_BUNDLE",
+        description: "Экспорт единого bundle (HTTP processing + connectors)",
+        parameterTemplate: {}
+    },
+    {
+        operation: "IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW",
+        description: "Dry-run импорт bundle интеграции без применения",
+        parameterTemplate: {
+            bundle: {
+                httpProcessingProfile: {
+                    enabled: true,
+                    addDirectionHeader: true,
+                    directionHeaderName: "X-Integration-Direction",
+                    requestEnvelopeEnabled: true,
+                    parseJsonBody: true,
+                    responseBodyMaxChars: 2000
+                },
+                connectorPresets: {
+                    messageBrokers: [
+                        {id: "webhook-bus", type: "WEBHOOK_HTTP", properties: {url: "https://gateway.customer.local/events"}}
+                    ],
+                    externalRestServices: [
+                        {id: "crm", baseUrl: "https://crm.customer.local"}
+                    ]
+                }
+            }
+        }
+    },
+    {
+        operation: "IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY",
+        description: "Применение bundle интеграции (после preview)",
+        parameterTemplate: {
+            replaceExisting: false,
+            bundle: {
+                httpProcessingProfile: {
+                    enabled: true,
+                    addDirectionHeader: true,
+                    directionHeaderName: "X-Integration-Direction",
+                    requestEnvelopeEnabled: true,
+                    parseJsonBody: true,
+                    responseBodyMaxChars: 2000
+                },
+                connectorPresets: {
+                    messageBrokers: [
+                        {id: "webhook-bus", type: "WEBHOOK_HTTP", properties: {url: "https://gateway.customer.local/events"}}
+                    ],
+                    externalRestServices: [
+                        {id: "crm", baseUrl: "https://crm.customer.local"}
+                    ]
+                }
+            }
+        }
+    }
 ];
 const STUDIO_OPS_CACHE_KEY = "integration-ui-studio-operations-catalog";
 

@@ -9,6 +9,7 @@ import ru.aritmos.integration.domain.HealthStatusResponse;
 import ru.aritmos.integration.eventing.EventDispatcherService;
 import ru.aritmos.integration.eventing.EventingHealth;
 import ru.aritmos.integration.security.core.SecurityMode;
+import ru.aritmos.integration.service.RuntimeSafetyLimitService;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -24,11 +25,14 @@ public class HealthController {
 
     private final IntegrationGatewayConfiguration configuration;
     private final EventDispatcherService eventDispatcherService;
+    private final RuntimeSafetyLimitService runtimeSafetyLimitService;
 
     public HealthController(IntegrationGatewayConfiguration configuration,
-                            EventDispatcherService eventDispatcherService) {
+                            EventDispatcherService eventDispatcherService,
+                            RuntimeSafetyLimitService runtimeSafetyLimitService) {
         this.configuration = configuration;
         this.eventDispatcherService = eventDispatcherService;
+        this.runtimeSafetyLimitService = runtimeSafetyLimitService;
     }
 
     @Get("/liveness")
@@ -59,6 +63,7 @@ public class HealthController {
         components.put("aggregation", resolveAggregationStatus());
         components.put("programmable-api", configuration.getProgrammableApi().isEnabled() ? "ENABLED" : "DISABLED");
         components.put("client-policy", resolveClientPolicyStatus());
+        components.put("runtime-safety", runtimeSafetyLimitService.readinessStatus());
         components.put("observability", "UP");
 
         String status = resolveOverallStatus(components.values());

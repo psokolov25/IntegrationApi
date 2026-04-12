@@ -223,6 +223,8 @@ public class IntegrationGatewayConfiguration {
         private String statePersistencePath = "cache/eventing-state/snapshot.json";
         private int outboxBackoffSeconds = 5;
         private int outboxMaxAttempts = 20;
+        private boolean outboxAutoFlushEnabled = false;
+        private int outboxAutoFlushBatchSize = 100;
         private int inboxProcessingTimeoutSeconds = 120;
         private int maxRetries = 2;
         private int maxPayloadFields = 100;
@@ -236,6 +238,7 @@ public class IntegrationGatewayConfiguration {
         private boolean snapshotImportRequireMatchingProcessedKeys = true;
         private boolean snapshotImportRejectCrossListDuplicates = true;
         private KafkaSettings kafka = new KafkaSettings();
+        private EventWebhookSettings webhook = new EventWebhookSettings();
         private EntityChangedBranchMappingSettings entityChangedBranchMapping = new EntityChangedBranchMappingSettings();
 
         public boolean isEnabled() {
@@ -278,6 +281,22 @@ public class IntegrationGatewayConfiguration {
             this.outboxMaxAttempts = outboxMaxAttempts;
         }
 
+        public boolean isOutboxAutoFlushEnabled() {
+            return outboxAutoFlushEnabled;
+        }
+
+        public void setOutboxAutoFlushEnabled(boolean outboxAutoFlushEnabled) {
+            this.outboxAutoFlushEnabled = outboxAutoFlushEnabled;
+        }
+
+        public int getOutboxAutoFlushBatchSize() {
+            return outboxAutoFlushBatchSize;
+        }
+
+        public void setOutboxAutoFlushBatchSize(int outboxAutoFlushBatchSize) {
+            this.outboxAutoFlushBatchSize = outboxAutoFlushBatchSize;
+        }
+
         public int getInboxProcessingTimeoutSeconds() {
             return inboxProcessingTimeoutSeconds;
         }
@@ -292,6 +311,14 @@ public class IntegrationGatewayConfiguration {
 
         public void setKafka(KafkaSettings kafka) {
             this.kafka = kafka;
+        }
+
+        public EventWebhookSettings getWebhook() {
+            return webhook;
+        }
+
+        public void setWebhook(EventWebhookSettings webhook) {
+            this.webhook = webhook;
         }
 
         public int getMaxRetries() {
@@ -705,6 +732,82 @@ public class IntegrationGatewayConfiguration {
     }
 
     @Introspected
+    public static class EventWebhookSettings {
+        private boolean enabled = false;
+        private String url = "";
+        private String authHeader = "Authorization";
+        private String authToken = "";
+        private List<String> targetSystems = new ArrayList<>();
+        private long connectTimeoutMillis = 1000;
+        private long readTimeoutMillis = 3000;
+        private Map<String, String> headers = new HashMap<>();
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getUrl() {
+            return url;
+        }
+
+        public void setUrl(String url) {
+            this.url = url;
+        }
+
+        public String getAuthHeader() {
+            return authHeader;
+        }
+
+        public void setAuthHeader(String authHeader) {
+            this.authHeader = authHeader;
+        }
+
+        public String getAuthToken() {
+            return authToken;
+        }
+
+        public void setAuthToken(String authToken) {
+            this.authToken = authToken;
+        }
+
+        public List<String> getTargetSystems() {
+            return targetSystems;
+        }
+
+        public void setTargetSystems(List<String> targetSystems) {
+            this.targetSystems = targetSystems;
+        }
+
+        public long getConnectTimeoutMillis() {
+            return connectTimeoutMillis;
+        }
+
+        public void setConnectTimeoutMillis(long connectTimeoutMillis) {
+            this.connectTimeoutMillis = connectTimeoutMillis;
+        }
+
+        public long getReadTimeoutMillis() {
+            return readTimeoutMillis;
+        }
+
+        public void setReadTimeoutMillis(long readTimeoutMillis) {
+            this.readTimeoutMillis = readTimeoutMillis;
+        }
+
+        public Map<String, String> getHeaders() {
+            return headers;
+        }
+
+        public void setHeaders(Map<String, String> headers) {
+            this.headers = headers;
+        }
+    }
+
+    @Introspected
     public static class ClientPolicySettings {
         private int retryAttempts = 2;
         private long timeoutMillis = 1000;
@@ -749,6 +852,7 @@ public class IntegrationGatewayConfiguration {
         private boolean enabled = false;
         private List<ProgrammableEndpoint> endpoints = new ArrayList<>();
         private ScriptStorageSettings scriptStorage = new ScriptStorageSettings();
+        private HttpProcessingSettings httpProcessing = new HttpProcessingSettings();
         private List<ExternalRestServiceSettings> externalRestServices = new ArrayList<>();
         private List<MessageBrokerSettings> messageBrokers = new ArrayList<>();
         private List<MessageReactionRouteSettings> messageReactions = new ArrayList<>();
@@ -777,6 +881,14 @@ public class IntegrationGatewayConfiguration {
             this.scriptStorage = scriptStorage;
         }
 
+        public HttpProcessingSettings getHttpProcessing() {
+            return httpProcessing;
+        }
+
+        public void setHttpProcessing(HttpProcessingSettings httpProcessing) {
+            this.httpProcessing = httpProcessing;
+        }
+
         public List<ExternalRestServiceSettings> getExternalRestServices() {
             return externalRestServices;
         }
@@ -799,6 +911,64 @@ public class IntegrationGatewayConfiguration {
 
         public void setMessageReactions(List<MessageReactionRouteSettings> messageReactions) {
             this.messageReactions = messageReactions;
+        }
+    }
+
+    @Introspected
+    public static class HttpProcessingSettings {
+        private boolean enabled = true;
+        private boolean addDirectionHeader = true;
+        private String directionHeaderName = "X-Integration-Direction";
+        private boolean requestEnvelopeEnabled = false;
+        private int responseBodyMaxChars = 4000;
+        private boolean parseJsonBody = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isAddDirectionHeader() {
+            return addDirectionHeader;
+        }
+
+        public void setAddDirectionHeader(boolean addDirectionHeader) {
+            this.addDirectionHeader = addDirectionHeader;
+        }
+
+        public String getDirectionHeaderName() {
+            return directionHeaderName;
+        }
+
+        public void setDirectionHeaderName(String directionHeaderName) {
+            this.directionHeaderName = directionHeaderName;
+        }
+
+        public boolean isRequestEnvelopeEnabled() {
+            return requestEnvelopeEnabled;
+        }
+
+        public void setRequestEnvelopeEnabled(boolean requestEnvelopeEnabled) {
+            this.requestEnvelopeEnabled = requestEnvelopeEnabled;
+        }
+
+        public int getResponseBodyMaxChars() {
+            return responseBodyMaxChars;
+        }
+
+        public void setResponseBodyMaxChars(int responseBodyMaxChars) {
+            this.responseBodyMaxChars = responseBodyMaxChars;
+        }
+
+        public boolean isParseJsonBody() {
+            return parseJsonBody;
+        }
+
+        public void setParseJsonBody(boolean parseJsonBody) {
+            this.parseJsonBody = parseJsonBody;
         }
     }
 

@@ -27,6 +27,9 @@ import ru.aritmos.integration.domain.GroovyScriptUpsertRequest;
 import ru.aritmos.integration.domain.InboundMessageReactionRequest;
 import ru.aritmos.integration.domain.IntegrationTemplateExportRequest;
 import ru.aritmos.integration.domain.IntegrationTemplatePreviewDto;
+import ru.aritmos.integration.domain.CustomerLookupRequest;
+import ru.aritmos.integration.domain.CustomerMedicalServicesRequest;
+import ru.aritmos.integration.domain.CustomerPrebookingRequest;
 import ru.aritmos.integration.domain.ScriptExecutionRequest;
 import ru.aritmos.integration.domain.StudioEditorSettingsDto;
 import ru.aritmos.integration.domain.StudioOperationCatalogItemDto;
@@ -36,6 +39,7 @@ import ru.aritmos.integration.domain.ConnectorRestInvokeRequest;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 import ru.aritmos.integration.programming.CustomerMessageBusGateway;
 import ru.aritmos.integration.programming.CustomerMessageBusAdapter;
+import ru.aritmos.integration.programming.CustomerCrmIntegrationGateway;
 import ru.aritmos.integration.programming.ExternalRestClient;
 import ru.aritmos.integration.programming.GroovyScriptService;
 import ru.aritmos.integration.programming.IntegrationTemplateArchiveService;
@@ -65,6 +69,7 @@ public class ProgrammableController {
     private final GroovyScriptService groovyScriptService;
     private final IntegrationTemplateArchiveService templateArchiveService;
     private final ExternalRestClient externalRestClient;
+    private final CustomerCrmIntegrationGateway customerCrmIntegrationGateway;
     private final CustomerMessageBusGateway customerMessageBusGateway;
     private final List<CustomerMessageBusAdapter> messageBusAdapters;
     private final IntegrationGatewayConfiguration configuration;
@@ -80,6 +85,7 @@ public class ProgrammableController {
                                   GroovyScriptService groovyScriptService,
                                   IntegrationTemplateArchiveService templateArchiveService,
                                   ExternalRestClient externalRestClient,
+                                  CustomerCrmIntegrationGateway customerCrmIntegrationGateway,
                                   CustomerMessageBusGateway customerMessageBusGateway,
                                   List<CustomerMessageBusAdapter> messageBusAdapters,
                                   IntegrationGatewayConfiguration configuration,
@@ -94,6 +100,7 @@ public class ProgrammableController {
         this.groovyScriptService = groovyScriptService;
         this.templateArchiveService = templateArchiveService;
         this.externalRestClient = externalRestClient;
+        this.customerCrmIntegrationGateway = customerCrmIntegrationGateway;
         this.customerMessageBusGateway = customerMessageBusGateway;
         this.messageBusAdapters = messageBusAdapters;
         this.configuration = configuration;
@@ -476,7 +483,8 @@ public class ProgrammableController {
                 "externalRestServices", restServices,
                 "messageBrokers", messageBrokers,
                 "messageReactions", messageReactions,
-                "supportedBrokerTypes", supportedBrokerTypes()
+                "supportedBrokerTypes", supportedBrokerTypes(),
+                "supportedBrokerProfiles", supportedBrokerProfiles()
         );
     }
 
@@ -486,7 +494,10 @@ public class ProgrammableController {
         var subject = RequestSecurityContext.current(request)
                 .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
         authorizationService.requirePermission(subject, "programmable-script-execute");
-        return Map.of("supportedBrokerTypes", supportedBrokerTypes());
+        return Map.of(
+                "supportedBrokerTypes", supportedBrokerTypes(),
+                "supportedBrokerProfiles", supportedBrokerProfiles()
+        );
     }
 
     @Get("/connectors/health")
@@ -682,10 +693,58 @@ public class ProgrammableController {
         );
     }
 
+    @Post("/connectors/crm/identify-client")
+    @Operation(summary = "Идентификация клиента во внешней CRM",
+            description = "Поиск клиента по идентификационной строке (телефон, СНИЛС, ИНН и др.) через настроенный CRM connector.")
+    public Map<String, Object> identifyClient(HttpRequest<?> request,
+                                              @Body CustomerLookupRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return customerCrmIntegrationGateway.identifyClient(payload);
+    }
+
+    @Post("/connectors/crm/medical-services")
+    @Operation(summary = "Получить доступные медицинские услуги для клиента",
+            description = "Запрашивает перечень услуг во внешней CRM/МИС по идентификационной строке клиента.")
+    public Map<String, Object> availableMedicalServices(HttpRequest<?> request,
+                                                        @Body CustomerMedicalServicesRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return customerCrmIntegrationGateway.fetchAvailableMedicalServices(payload);
+    }
+
+    @Post("/connectors/crm/prebooking")
+    @Operation(summary = "Получить данные предварительной записи клиента",
+            description = "Запрашивает pre-booking/предзапись во внешней CRM/МИС по идентификационной строке клиента.")
+    public Map<String, Object> prebookingData(HttpRequest<?> request,
+                                              @Body CustomerPrebookingRequest payload) {
+        var subject = RequestSecurityContext.current(request)
+                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
+        authorizationService.requirePermission(subject, "programmable-script-execute");
+        return customerCrmIntegrationGateway.fetchPrebookingData(payload);
+    }
+
     private List<String> supportedBrokerTypes() {
         LinkedHashSet<String> supported = new LinkedHashSet<>();
         messageBusAdapters.forEach(adapter -> supported.addAll(adapter.supportedBrokerTypes()));
         return supported.stream().sorted().toList();
+    }
+
+    private List<Map<String, Object>> supportedBrokerProfiles() {
+        return messageBusAdapters.stream()
+                .flatMap(adapter -> adapter.supportedBrokerProfiles().stream())
+                .filter(item -> item.containsKey("type"))
+                .collect(java.util.stream.Collectors.collectingAndThen(
+                        java.util.stream.Collectors.toMap(
+                                item -> String.valueOf(item.get("type")).trim().toUpperCase(),
+                                item -> item,
+                                (left, right) -> left,
+                                java.util.LinkedHashMap::new
+                        ),
+                        map -> List.copyOf(map.values())
+                ));
     }
 
     @Post(value = "/templates/import/preview", consumes = MediaType.MULTIPART_FORM_DATA)

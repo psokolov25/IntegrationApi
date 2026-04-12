@@ -46,6 +46,25 @@ public class HttpWebhookMessageBusAdapter implements CustomerMessageBusAdapter {
     }
 
     @Override
+    public List<Map<String, Object>> supportedBrokerProfiles() {
+        return List.of(
+                Map.of(
+                        "type", "WEBHOOK_HTTP",
+                        "description", "HTTP webhook публикация JSON payload в шлюз/ESB заказчика",
+                        "adapterMode", "HTTP_DELIVERY",
+                        "requiredProperties", List.of("url"),
+                        "optionalProperties", List.of("method", "timeoutSeconds", "header.Authorization"),
+                        "propertyTemplate", Map.of(
+                                "url", "https://gateway.customer.local/integration/events",
+                                "method", "POST",
+                                "timeoutSeconds", "10",
+                                "header.Authorization", "Bearer <token>"
+                        )
+                )
+        );
+    }
+
+    @Override
     public Map<String, Object> publish(IntegrationGatewayConfiguration.MessageBrokerSettings broker,
                                        BrokerMessageRequest message) {
         String targetUrl = broker.getProperties().get("url");

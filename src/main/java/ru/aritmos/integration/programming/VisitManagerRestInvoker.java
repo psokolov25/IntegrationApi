@@ -19,14 +19,22 @@ public class VisitManagerRestInvoker {
 
     private final IntegrationGatewayConfiguration configuration;
     private final ObjectMapper objectMapper;
+    private final ProgrammableHttpExchangeProcessor exchangeProcessor;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(5))
             .build();
 
     public VisitManagerRestInvoker(IntegrationGatewayConfiguration configuration,
-                                   ObjectMapper objectMapper) {
+                                   ObjectMapper objectMapper,
+                                   ProgrammableHttpExchangeProcessor exchangeProcessor) {
         this.configuration = configuration;
         this.objectMapper = objectMapper;
+        this.exchangeProcessor = exchangeProcessor;
+    }
+
+    VisitManagerRestInvoker(IntegrationGatewayConfiguration configuration,
+                            ObjectMapper objectMapper) {
+        this(configuration, objectMapper, new ProgrammableHttpExchangeProcessor(configuration, objectMapper));
     }
 
     public Map<String, Object> invoke(String targetVisitManagerId,
@@ -44,12 +52,11 @@ public class VisitManagerRestInvoker {
                 .uri(URI.create(baseUrl + path))
                 .timeout(Duration.ofSeconds(15));
 
-        if (headers != null) {
-            headers.forEach(builder::header);
-        }
+        exchangeProcessor.enrichHeaders(headers, ProgrammableHttpExchangeProcessor.DIRECTION_INBOUND_SUO).forEach(builder::header);
 
         String normalizedMethod = method == null ? "GET" : method.toUpperCase();
-        String bodyJson = body == null ? "" : writeBody(body);
+        Map<String, Object> enrichedBody = exchangeProcessor.enrichBody(body, ProgrammableHttpExchangeProcessor.DIRECTION_INBOUND_SUO);
+        String bodyJson = enrichedBody == null || enrichedBody.isEmpty() ? "" : writeBody(enrichedBody);
         HttpRequest request = switch (normalizedMethod) {
             case "POST" -> builder.POST(HttpRequest.BodyPublishers.ofString(bodyJson)).build();
             case "PUT" -> builder.PUT(HttpRequest.BodyPublishers.ofString(bodyJson)).build();
@@ -60,11 +67,7 @@ public class VisitManagerRestInvoker {
 
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            return Map.of(
-                    "status", response.statusCode(),
-                    "body", response.body(),
-                    "headers", response.headers().map()
-            );
+            return Map.copyOf(exchangeProcessor.processResponse(response));
         } catch (Exception ex) {
             throw new IllegalStateException("Ошибка вызова VisitManager REST", ex);
         }

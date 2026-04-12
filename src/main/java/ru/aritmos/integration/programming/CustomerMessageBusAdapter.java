@@ -19,6 +19,13 @@ public interface CustomerMessageBusAdapter {
         return List.of();
     }
 
+    /**
+     * Расширенный каталог поддерживаемых типов и шаблонов параметров для GUI.
+     */
+    default List<Map<String, Object>> supportedBrokerProfiles() {
+        return List.of();
+    }
+
     Map<String, Object> publish(IntegrationGatewayConfiguration.MessageBrokerSettings broker,
                                 BrokerMessageRequest message);
 }

@@ -90,6 +90,7 @@ class StudioWorkspaceServiceTest {
         Map<String, Object> connectors = cast(snapshot.get("connectors"));
         Map<String, Object> ide = cast(snapshot.get("ide"));
         Map<String, Object> runtime = cast(snapshot.get("runtime"));
+        Map<String, Object> settings = cast(snapshot.get("settings"));
         Map<String, Object> gui = cast(snapshot.get("gui"));
 
         Assertions.assertEquals(1, cast(eventing.get("inbox")).get("size"));
@@ -101,8 +102,45 @@ class StudioWorkspaceServiceTest {
         Assertions.assertEquals(1, ide.get("debugHistorySize"));
         Assertions.assertEquals(1, ((List<?>) ide.get("debugHistoryRecent")).size());
         Assertions.assertEquals(1, runtime.get("scriptCount"));
+        Assertions.assertTrue(cast(runtime.get("httpProcessing")).containsKey("enabled"));
+        Assertions.assertTrue(settings.containsKey("httpProcessingEnabled"));
         Assertions.assertEquals(List.of("В inbox есть PROCESSING-события: 1"), gui.get("warnings"));
-        Assertions.assertFalse(((List<?>) gui.get("actions")).isEmpty());
+        List<Map<String, Object>> actions = castListOfMaps(gui.get("actions"));
+        Assertions.assertFalse(actions.isEmpty());
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.http.processing.profile.export".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.http.processing.profile.preview".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.http.processing.profile.apply".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.http.processing.preview".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.http.processing.matrix".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.connector.profile.preview".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.connector.profile.validate".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.connector.presets.export".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.connector.presets.import.preview".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.connector.presets.import.diff".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.connector.presets.import.apply".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.integration.bundle.export".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.integration.bundle.preview".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.integration.bundle.apply".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "connectors.crm.identify-client".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "connectors.crm.medical-services".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "connectors.crm.prebooking".equals(action.get("id"))));
     }
 
     @Test
@@ -232,10 +270,12 @@ class StudioWorkspaceServiceTest {
         Assertions.assertEquals(1, visitManagers.get("visitManagersCount"));
         Map<String, Object> external = cast(dashboard.get("externalServices"));
         Assertions.assertEquals(1, external.get("restServicesCount"));
+        Assertions.assertTrue(external.containsKey("supportedBrokerProfiles"));
         Map<String, Object> branchState = cast(dashboard.get("branchStateCache"));
         Assertions.assertEquals(1, branchState.get("total"));
         Map<String, Object> runtimeSettings = cast(dashboard.get("runtimeSettings"));
         Assertions.assertEquals(cfg.getAggregateMaxBranches(), runtimeSettings.get("aggregateMaxBranches"));
+        Assertions.assertTrue(runtimeSettings.containsKey("httpProcessing"));
     }
 
     @Test
@@ -324,6 +364,15 @@ class StudioWorkspaceServiceTest {
         @Override
         public List<String> supportedBrokerTypes() {
             return List.of("KAFKA");
+        }
+
+        @Override
+        public List<Map<String, Object>> supportedBrokerProfiles() {
+            return List.of(Map.of(
+                    "type", "KAFKA",
+                    "description", "Kafka test adapter",
+                    "adapterMode", "TEST"
+            ));
         }
 
         @Override

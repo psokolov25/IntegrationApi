@@ -81,6 +81,14 @@ public class StudioWorkspaceService {
         runtime.put("scriptCount", scripts.size());
         runtime.put("scriptTypes", scripts.stream()
                 .collect(Collectors.groupingBy(script -> script.type().name(), LinkedHashMap::new, Collectors.counting())));
+        runtime.put("httpProcessing", Map.of(
+                "enabled", configuration.getProgrammableApi().getHttpProcessing().isEnabled(),
+                "addDirectionHeader", configuration.getProgrammableApi().getHttpProcessing().isAddDirectionHeader(),
+                "directionHeaderName", configuration.getProgrammableApi().getHttpProcessing().getDirectionHeaderName(),
+                "requestEnvelopeEnabled", configuration.getProgrammableApi().getHttpProcessing().isRequestEnvelopeEnabled(),
+                "responseBodyMaxChars", configuration.getProgrammableApi().getHttpProcessing().getResponseBodyMaxChars(),
+                "parseJsonBody", configuration.getProgrammableApi().getHttpProcessing().isParseJsonBody()
+        ));
 
         Map<String, Object> connectors = new LinkedHashMap<>();
         connectors.put("restServices", configuration.getProgrammableApi().getExternalRestServices().size());
@@ -152,6 +160,8 @@ public class StudioWorkspaceService {
         settings.put("branchStateEventRefreshDebounce", configuration.getBranchStateEventRefreshDebounce().toString());
         settings.put("eventingOutboxBackoffSeconds", configuration.getEventing().getOutboxBackoffSeconds());
         settings.put("eventingOutboxMaxAttempts", configuration.getEventing().getOutboxMaxAttempts());
+        settings.put("httpProcessingEnabled", configuration.getProgrammableApi().getHttpProcessing().isEnabled());
+        settings.put("httpProcessingDirectionHeader", configuration.getProgrammableApi().getHttpProcessing().getDirectionHeaderName());
 
         Map<String, Object> gui = new LinkedHashMap<>();
         gui.put("tabs", List.of("scripts", "debug", "connectors", "inbox-outbox", "settings", "templates"));
@@ -165,10 +175,29 @@ public class StudioWorkspaceService {
                 Map.of("id", "studio.settings.import", "method", "POST", "path", "/api/v1/program/studio/settings/import"),
                 Map.of("id", "studio.capabilities", "method", "GET", "path", "/api/v1/program/studio/capabilities"),
                 Map.of("id", "studio.operations", "method", "POST", "path", "/api/v1/program/studio/operations"),
+                Map.of("id", "studio.http.processing.profile.export", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"EXPORT_HTTP_PROCESSING_PROFILE\"}"),
+                Map.of("id", "studio.http.processing.profile.preview", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW\",\"parameters\":{\"httpProcessingProfile\":{\"enabled\":true,\"addDirectionHeader\":true,\"directionHeaderName\":\"X-Integration-Direction\",\"requestEnvelopeEnabled\":true,\"parseJsonBody\":true,\"responseBodyMaxChars\":2000}}}"),
+                Map.of("id", "studio.http.processing.profile.apply", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"IMPORT_HTTP_PROCESSING_PROFILE_APPLY\",\"parameters\":{\"httpProcessingProfile\":{\"enabled\":true,\"addDirectionHeader\":true,\"directionHeaderName\":\"X-Integration-Direction\",\"requestEnvelopeEnabled\":true,\"parseJsonBody\":true,\"responseBodyMaxChars\":2000}}}"),
                 Map.of("id", "studio.dashboard.snapshot", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"DASHBOARD_SNAPSHOT\",\"parameters\":{\"debugHistoryLimit\":20}}"),
+                Map.of("id", "studio.http.processing.preview", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"PREVIEW_HTTP_PROCESSING\"}"),
+                Map.of("id", "studio.http.processing.matrix", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"PREVIEW_HTTP_PROCESSING_MATRIX\"}"),
+                Map.of("id", "studio.connector.profile.preview", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"PREVIEW_CONNECTOR_PROFILE\",\"parameters\":{\"brokerType\":\"KAFKA\"}}"),
+                Map.of("id", "studio.connector.profile.validate", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"VALIDATE_CONNECTOR_CONFIG\",\"parameters\":{\"brokerType\":\"WEBHOOK_HTTP\",\"properties\":{\"url\":\"https://gateway.local/events\"}}}"),
+                Map.of("id", "studio.connector.presets.export", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"EXPORT_CONNECTOR_PRESETS\"}"),
+                Map.of("id", "studio.connector.presets.import.preview", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"IMPORT_CONNECTOR_PRESETS_PREVIEW\",\"parameters\":{\"messageBrokers\":[{\"id\":\"webhook-bus\",\"type\":\"WEBHOOK_HTTP\",\"properties\":{\"url\":\"https://gateway.local/events\"}}]}}"),
+                Map.of("id", "studio.connector.presets.import.diff", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"IMPORT_CONNECTOR_PRESETS_DIFF\",\"parameters\":{\"messageBrokers\":[{\"id\":\"webhook-bus\",\"type\":\"WEBHOOK_HTTP\",\"properties\":{\"url\":\"https://gateway.local/events\"}}]}}"),
+                Map.of("id", "studio.connector.presets.import.apply", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"IMPORT_CONNECTOR_PRESETS_APPLY\",\"parameters\":{\"replaceExisting\":false,\"messageBrokers\":[{\"id\":\"webhook-bus\",\"type\":\"WEBHOOK_HTTP\",\"properties\":{\"url\":\"https://gateway.local/events\"}}]}}"),
+                Map.of("id", "studio.integration.bundle.export", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"EXPORT_INTEGRATION_CONNECTOR_BUNDLE\"}"),
+                Map.of("id", "studio.integration.bundle.preview", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW\",\"parameters\":{\"bundle\":{\"httpProcessingProfile\":{\"enabled\":true,\"addDirectionHeader\":true,\"directionHeaderName\":\"X-Integration-Direction\",\"requestEnvelopeEnabled\":true,\"parseJsonBody\":true,\"responseBodyMaxChars\":2000},\"connectorPresets\":{\"messageBrokers\":[{\"id\":\"webhook-bus\",\"type\":\"WEBHOOK_HTTP\",\"properties\":{\"url\":\"https://gateway.local/events\"}}],\"externalRestServices\":[{\"id\":\"crm\",\"baseUrl\":\"https://crm.local\"}]}}}}"),
+                Map.of("id", "studio.integration.bundle.apply", "method", "POST", "path", "/api/v1/program/studio/operations {\"operation\":\"IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY\",\"parameters\":{\"replaceExisting\":false,\"bundle\":{\"httpProcessingProfile\":{\"enabled\":true,\"addDirectionHeader\":true,\"directionHeaderName\":\"X-Integration-Direction\",\"requestEnvelopeEnabled\":true,\"parseJsonBody\":true,\"responseBodyMaxChars\":2000},\"connectorPresets\":{\"messageBrokers\":[{\"id\":\"webhook-bus\",\"type\":\"WEBHOOK_HTTP\",\"properties\":{\"url\":\"https://gateway.local/events\"}}],\"externalRestServices\":[{\"id\":\"crm\",\"baseUrl\":\"https://crm.local\"}]}}}}"),
+                Map.of("id", "connectors.crm.identify-client", "method", "POST", "path", "/api/v1/program/connectors/crm/identify-client"),
+                Map.of("id", "connectors.crm.medical-services", "method", "POST", "path", "/api/v1/program/connectors/crm/medical-services"),
+                Map.of("id", "connectors.crm.prebooking", "method", "POST", "path", "/api/v1/program/connectors/crm/prebooking"),
                 Map.of("id", "templates.import.preview", "method", "POST", "path", "/api/v1/program/templates/import/preview"),
                 Map.of("id", "templates.import", "method", "POST", "path", "/api/v1/program/templates/import"),
                 Map.of("id", "templates.export", "method", "POST", "path", "/api/v1/program/templates/export"),
+                Map.of("id", "connectors.catalog", "method", "GET", "path", "/api/v1/program/connectors/catalog"),
+                Map.of("id", "connectors.broker-types", "method", "GET", "path", "/api/v1/program/connectors/broker-types"),
                 Map.of("id", "connectors.health", "method", "GET", "path", "/api/v1/program/connectors/health"),
                 Map.of("id", "events.outbox.flush", "method", "POST", "path", "/api/v1/events/outbox/flush?limit=100"),
                 Map.of("id", "events.inbox.recover", "method", "POST", "path", "/api/v1/events/inbox/recover-stale"),
@@ -336,6 +365,8 @@ public class StudioWorkspaceService {
                 "messageBrokers", brokers,
                 "messageBrokersCount", brokers.size(),
                 "messageReactionsCount", configuration.getProgrammableApi().getMessageReactions().size(),
+                "supportedBrokerTypes", supportedBrokerTypes(),
+                "supportedBrokerProfiles", supportedBrokerProfiles(),
                 "generatedAt", Instant.now().toString()
         );
     }
@@ -356,6 +387,14 @@ public class StudioWorkspaceService {
         snapshot.put("branchStateEventRefreshDebounce", configuration.getBranchStateEventRefreshDebounce().toString());
         snapshot.put("aggregateMaxBranches", configuration.getAggregateMaxBranches());
         snapshot.put("aggregateRequestTimeoutMillis", configuration.getAggregateRequestTimeoutMillis());
+        snapshot.put("httpProcessing", Map.of(
+                "enabled", configuration.getProgrammableApi().getHttpProcessing().isEnabled(),
+                "addDirectionHeader", configuration.getProgrammableApi().getHttpProcessing().isAddDirectionHeader(),
+                "directionHeaderName", configuration.getProgrammableApi().getHttpProcessing().getDirectionHeaderName(),
+                "requestEnvelopeEnabled", configuration.getProgrammableApi().getHttpProcessing().isRequestEnvelopeEnabled(),
+                "responseBodyMaxChars", configuration.getProgrammableApi().getHttpProcessing().getResponseBodyMaxChars(),
+                "parseJsonBody", configuration.getProgrammableApi().getHttpProcessing().isParseJsonBody()
+        ));
         snapshot.put("generatedAt", Instant.now().toString());
         return snapshot;
     }
@@ -400,8 +439,8 @@ public class StudioWorkspaceService {
                         "Убедиться, что runtime.scriptStorage и scriptCount соответствуют ожидаемым",
                         "GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20"),
                 playbookItem(9, "MEDIUM", "connectors", "Проверить коннекторы и типы брокеров",
-                        "Проверить unsupportedBrokerTypes и connectors health",
-                        "GET /api/v1/program/connectors/health"),
+                        "Проверить unsupportedBrokerTypes, connectors health и catalog профили поддерживаемых брокеров",
+                        "GET /api/v1/program/connectors/health, GET /api/v1/program/connectors/catalog"),
                 playbookItem(10, "MEDIUM", "branch-cache", "Проверить актуальность branch-state кэша",
                         "Сверить total/byVisitManager/recent в branch-state snapshot и наличие свежих updatedAt",
                         "POST /api/v1/program/studio/operations {\"operation\":\"SNAPSHOT_BRANCH_CACHE\",\"parameters\":{\"limit\":50}}"),
@@ -412,7 +451,7 @@ public class StudioWorkspaceService {
                         "Проверить theme/fontSize и при необходимости выполнить backup/restore настроек",
                         "GET|PUT /api/v1/program/studio/settings, GET /api/v1/program/studio/settings/export, POST /api/v1/program/studio/settings/import"),
                 playbookItem(13, "MEDIUM", "runtime-settings", "Проверить runtime-настройки контрольной панели",
-                        "Сверить eventing/aggregation/branch-cache параметры в runtimeSettings snapshot",
+                        "Сверить eventing/aggregation/branch-cache и programmable HTTP processing параметры в runtimeSettings snapshot",
                         "POST /api/v1/program/studio/operations {\"operation\":\"SNAPSHOT_RUNTIME_SETTINGS\"}"),
                 playbookItem(14, "LOW", "import-export", "Проверить импорт/экспорт integration templates",
                         "Выполнить preview/import/export ITS архива через GUI workflow",
@@ -483,5 +522,20 @@ public class StudioWorkspaceService {
         LinkedHashSet<String> supported = new LinkedHashSet<>();
         messageBusAdapters.forEach(adapter -> supported.addAll(adapter.supportedBrokerTypes()));
         return supported.stream().sorted().toList();
+    }
+
+    private List<Map<String, Object>> supportedBrokerProfiles() {
+        return messageBusAdapters.stream()
+                .flatMap(adapter -> adapter.supportedBrokerProfiles().stream())
+                .filter(item -> item.containsKey("type"))
+                .collect(Collectors.collectingAndThen(
+                        Collectors.toMap(
+                                item -> String.valueOf(item.get("type")).trim().toUpperCase(),
+                                item -> item,
+                                (left, right) -> left,
+                                LinkedHashMap::new
+                        ),
+                        map -> List.copyOf(map.values())
+                ));
     }
 }

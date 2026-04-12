@@ -9,6 +9,8 @@ import ru.aritmos.integration.eventing.EventInboxService;
 import ru.aritmos.integration.eventing.EventRetryService;
 import ru.aritmos.integration.eventing.EventStoreService;
 import ru.aritmos.integration.security.core.SecurityMode;
+import ru.aritmos.integration.service.RuntimeHardwareProbe;
+import ru.aritmos.integration.service.RuntimeSafetyLimitService;
 
 import java.util.List;
 import java.util.Map;
@@ -34,7 +36,7 @@ class HealthControllerTest {
                 event -> {},
                 List.of(new DefaultVisitCreatedEventHandler())
         );
-        HealthController controller = new HealthController(cfg, dispatcher);
+        HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
 
         var readiness = controller.readiness();
         Assertions.assertEquals("UP", readiness.status());
@@ -45,6 +47,7 @@ class HealthControllerTest {
         Assertions.assertEquals("UP", readiness.components().get("aggregation"));
         Assertions.assertEquals("DISABLED", readiness.components().get("programmable-api"));
         Assertions.assertEquals("ENABLED", readiness.components().get("client-policy"));
+        Assertions.assertEquals("UP", readiness.components().get("runtime-safety"));
         Assertions.assertEquals("UP", readiness.components().get("observability"));
     }
 
@@ -59,7 +62,7 @@ class HealthControllerTest {
                 event -> {},
                 List.of(new DefaultVisitCreatedEventHandler())
         );
-        HealthController controller = new HealthController(cfg, dispatcher);
+        HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
 
         var liveness = controller.liveness();
         Assertions.assertEquals("UP", liveness.status());
@@ -92,7 +95,7 @@ class HealthControllerTest {
                 event -> {},
                 List.of(new DefaultVisitCreatedEventHandler())
         );
-        HealthController controller = new HealthController(cfg, dispatcher);
+        HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
 
         var readiness = controller.readiness();
         Assertions.assertEquals("DEGRADED", readiness.status());
@@ -121,7 +124,7 @@ class HealthControllerTest {
                 event -> {},
                 List.of(new DefaultVisitCreatedEventHandler())
         );
-        HealthController controller = new HealthController(cfg, dispatcher);
+        HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
 
         var readiness = controller.readiness();
         Assertions.assertEquals("DEGRADED", readiness.status());
@@ -150,7 +153,7 @@ class HealthControllerTest {
                 event -> {},
                 List.of(new DefaultVisitCreatedEventHandler())
         );
-        HealthController controller = new HealthController(cfg, dispatcher);
+        HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
 
         var readiness = controller.readiness();
         Assertions.assertEquals("DEGRADED", readiness.status());
@@ -173,7 +176,7 @@ class HealthControllerTest {
                 event -> {},
                 List.of(new DefaultVisitCreatedEventHandler())
         );
-        HealthController controller = new HealthController(cfg, dispatcher);
+        HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
 
         var readiness = controller.readiness();
         Assertions.assertEquals("DEGRADED", readiness.status());
