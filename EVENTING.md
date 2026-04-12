@@ -34,6 +34,8 @@
 - replay store (`EventStoreService`)
 - transport adapter SPI (`EventTransportAdapter`)
 - базовый Kafka/DataBus adapter (`KafkaDataBusTransportAdapter`, logging placeholder)
+- HTTP webhook transport adapter (`HttpWebhookEventTransportAdapter`) для внешних шин/шлюзов
+- композитный transport adapter (`CompositeEventTransportAdapter`) для параллельной публикации в активные каналы
 - поддержка `ENTITY_CHANGED` для `Branch` через конфигурируемый mapping paths (`integration.eventing.entity-changed-branch-mapping.*`)
 - повторная обработка событий из DLQ с удалением после успешного replay
 - bulk replay DLQ с ограничением по `limit`
@@ -49,6 +51,12 @@
 integration:
   eventing:
     enabled: true
+    outbox-backoff-seconds: 5
+    outbox-max-attempts: 20
+    outbox-auto-flush-enabled: false
+    outbox-auto-flush-batch-size: 100
+    outbox-auto-flush-interval: 30s
+    outbox-auto-flush-initial-delay: 10s
     max-retries: 2
     max-payload-fields: 100
     max-future-skew-seconds: 300
@@ -64,6 +72,16 @@ integration:
       enabled: false
       inbound-topic: integration.inbound
       outbound-topic: integration.outbound
+    webhook:
+      enabled: false
+      url: "https://databus-gateway.local/events"
+      auth-header: "Authorization"
+      auth-token: "Bearer ${TOKEN}"
+      target-systems: ["employee-workplace", "reception-desk"]
+      connect-timeout-millis: 1000
+      read-timeout-millis: 3000
+      headers:
+        X-Source-System: "integration-api"
     entity-changed-branch-mapping:
       enabled: true
       event-type: ENTITY_CHANGED
@@ -81,3 +99,4 @@ integration:
 ## Ограничения
 - inbox/DLQ/replay store пока in-memory.
 - Kafka transport пока логирующий placeholder без реального consumer loop.
+- Для защиты от перегрузки среды на старте может автоматически снижаться `max-payload-fields` и `outbox-auto-flush-batch-size` (см. `runtime-safety` в `/health/readiness`).

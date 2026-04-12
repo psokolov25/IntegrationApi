@@ -27,6 +27,9 @@
 - Liveness: `GET /health/liveness`
 - Readiness: `GET /health/readiness`
 - `GET /health/readiness` возвращает компоненты по ключевым группам (`gateway`, `federation`, `aggregation`, `eventing`, `security-mode`, `security`, `programmable-api`, `client-policy`, `observability`); `security` отражает корректность конфигурации режима безопасности (например, `API_KEY` без ключей -> `DOWN`, `HYBRID` без API keys и keycloak issuer -> `DEGRADED`).
+- `GET /health/readiness` дополнительно содержит `runtime-safety`:
+  - `UP` — аппаратных ограничений не потребовалось;
+  - `DEGRADED` — для защиты от подвисания и перегрузки соседних служб автоматически снижены runtime-лимиты.
 - Итоговый readiness становится `DEGRADED`, если любой компонент имеет `DOWN` или `DEGRADED`.
 - Gateway API: `/api/v1/queues`, `/api/v1/queues/aggregate`
 - Branch-state API:
@@ -44,7 +47,13 @@
   - `POST /api/v1/program/studio/settings/import` (restore/merge настроек IDE через GUI payload).
   - `GET /api/v1/program/studio/capabilities` (доступные темы/лимиты и путь персистентности настроек).
   - `GET /api/v1/program/studio/operations/catalog` (каталог операций и templates параметров для GUI).
-  - `POST /api/v1/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
+- `POST /api/v1/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_HTTP_PROCESSING_PROFILE`, `IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW`, `IMPORT_HTTP_PROCESSING_PROFILE_APPLY`, `PREVIEW_HTTP_PROCESSING`, `PREVIEW_HTTP_PROCESSING_MATRIX`, `PREVIEW_CONNECTOR_PROFILE`, `VALIDATE_CONNECTOR_CONFIG`, `EXPORT_CONNECTOR_PRESETS`, `IMPORT_CONNECTOR_PRESETS_PREVIEW`, `IMPORT_CONNECTOR_PRESETS_DIFF`, `IMPORT_CONNECTOR_PRESETS_APPLY`, `EXPORT_INTEGRATION_CONNECTOR_BUNDLE`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
+- Каталоги коннекторов/типов:
+  - `GET /api/v1/program/connectors/catalog` (включая `supportedBrokerProfiles` с property templates);
+  - `GET /api/v1/program/connectors/broker-types` (типы + профили для GUI форм настройки).
+  - `POST /api/v1/program/connectors/crm/identify-client` (поиск клиента во внешней CRM по строке идентификатора).
+  - `POST /api/v1/program/connectors/crm/medical-services` (получение перечня доступных медуслуг по идентификатору клиента).
+  - `POST /api/v1/program/connectors/crm/prebooking` (получение данных о предварительной записи по идентификатору клиента).
   - `GET /api/v1/program/studio/playbook?sortBy=importance|order` (операционный чек-лист с приоритетом базовых интеграционных задач: connectors health, routing, queue smoke, branch-state sync, внешние REST/message bus интеграции; по умолчанию сортировка по важности).
 
 - ITS (integration templates) для programmable handlers:
@@ -67,6 +76,7 @@
 - Дополнительные параметры надежности:
   - `integration.eventing.outbox-backoff-seconds`;
   - `integration.eventing.outbox-max-attempts` (после превышения статус outbox -> `DEAD`);
+  - `integration.eventing.outbox-auto-flush-enabled` + `integration.eventing.outbox-auto-flush-batch-size` + `integration.eventing.outbox-auto-flush-interval` (фоновый flush pending/failed outbox);
   - `integration.eventing.inbox-processing-timeout-seconds` + endpoint `POST /api/v1/events/inbox/recover-stale`.
 - Programmable Groovy scripts:
   - `PUT /api/v1/program/scripts/{scriptId}`
@@ -105,10 +115,24 @@
 - Проверить `integration.eventing.max-payload-fields` и `integration.eventing.max-future-skew-seconds`.
 - Проверить пороги `integration.eventing.dlq-warn-threshold` и `integration.eventing.duplicate-warn-threshold`.
 - Проверить лимиты/retention: `integration.eventing.max-dlq-events`, `integration.eventing.max-processed-events`, `integration.eventing.retention-seconds`.
+- Проверить конфигурацию внешнего transport webhook: `integration.eventing.webhook.enabled`,
+  `integration.eventing.webhook.url`, `integration.eventing.webhook.connect-timeout-millis`,
+  `integration.eventing.webhook.read-timeout-millis`, `integration.eventing.webhook.headers`,
+  `integration.eventing.webhook.target-systems` (фильтр публикации по аудиториям).
+- Проверить параметры авто-отправки outbox: `integration.eventing.outbox-auto-flush-enabled`,
+  `integration.eventing.outbox-auto-flush-batch-size`, `integration.eventing.outbox-auto-flush-interval`,
+  `integration.eventing.outbox-auto-flush-initial-delay`.
+- Проверить статус `runtime-safety` в `/health/readiness` и startup-лог `RUNTIME_SAFETY_LIMITS_APPLIED`:
+  - при профиле `LOW/MEDIUM` сервис может автоматически уменьшать `aggregate-max-branches`,
+    `aggregate-request-timeout-millis`, `eventing.max-payload-fields`, `eventing.outbox-auto-flush-batch-size`.
 - Проверить `integration.eventing.snapshot-import-max-events` для безопасного bulk import.
 - Проверить strict-политики импорта: `integration.eventing.snapshot-import-require-matching-processed-keys`,
   `integration.eventing.snapshot-import-reject-cross-list-duplicates`.
 - Проверить `integration.client-policy.*` (retry/timeout/circuit).
+- Проверить настройки кастомного HTTP processing-модуля (`integration.programmable-api.http-processing.*`):
+  - `add-direction-header`/`direction-header-name` для трассировки направления обмена (наружу/внутрь СУО);
+  - `request-envelope-enabled` для обертки outbound/inbound payload;
+  - `response-body-max-chars` и `parse-json-body` для безопасной обработки ответов.
 - Проверить `integration.branch-state-cache-ttl` и `integration.branch-state-event-refresh-debounce`.
 - Проверить `integration.eventing.entity-changed-branch-mapping.event-type` и соответствие `accepted-class-names` данным VisitManager.
 - При изменении payload `ENTITY_CHANGED` актуализировать lists полей `*-paths` в `entity-changed-branch-mapping` (без пересборки IntegrationAPI, если используется внешний конфиг/Groovy-скрипт конфигурации).
@@ -132,6 +156,9 @@
 ## Инциденты
 - DLQ растет: проверить handler для `eventType` и валидацию payload.
 - Outbox растет: проверить доступность внешнего транспорта и выполнить `POST /api/v1/events/outbox/flush?limit=N`.
+- Outbox растет при активном webhook transport: проверить HTTP-ответы внешнего шлюза (ожидается 2xx), корректность `webhook.url`, timeout и auth-header/token.
+- Если webhook получает «лишние»/«чужие» события, проверить фильтрацию `integration.eventing.webhook.target-systems`
+  и поле аудитории `meta.targetSystems` в payload исходного события.
 - Branch-state «застывает»: проверить, что приходят события `branch-state-updated`/`VISIT_*`, и нет ли слишком большого debounce-окна.
 - Branch-state не обновляется по `ENTITY_CHANGED`: проверить совпадение `class-name-paths` + `accepted-class-names`, и что `branch-id/status/active-window` доступны по настроенным paths. Если в payload приходит snapshot (`oldValue/newValue`) без канонических полей branch-state, используется fallback: `branchId` из `newValue.id`, `activeWindow` из `newValue.activeWindow|resetTime`, `queueSize` из суммарного числа `servicePoints[*].visits`, `status=UNKNOWN`.
 - Если payload содержит коллекции/неоднородную вложенность (например, `data.entities[*]`, snake_case/kebab-case ключи), маппер branch-state выполняет нормализацию ключей и рекурсивный поиск по path, поэтому при диагностике нужно проверить фактическое расположение данных, а не только «плоские» пути из примеров.
@@ -154,14 +181,47 @@
 - Если после нормализации `branchIds` не остается ни одного значения, endpoint возвращает `BAD_REQUEST` с подсказкой передать хотя бы один `branchId`.
 - Ошибки downstream: проверить client-policy и circuit status.
 - Ошибки выполнения Groovy-скриптов: проверить синтаксис scriptBody, тип скрипта (`BRANCH_CACHE_QUERY`/`VISIT_MANAGER_ACTION`) и доступность Redis.
+- Для сценариев нестабильных внешних API проверять `bodyPreview`/`json` в результате programmable REST-вызовов:
+  - если `json=null`, ответ не распарсился как JSON (проверить `parse-json-body`);
+  - если ответ обрезан, увеличить `response-body-max-chars`.
+- Для dry-run проверки кастомной обработки HTTP до релиза использовать
+  `POST /api/v1/program/studio/operations` с `operation=PREVIEW_HTTP_PROCESSING`
+  (параметры: `direction`, `headers`, `body`, `responseStatus`, `responseBody`, `responseHeaders`; в ответе `supportedDirections`).
+- Для сравнения обработки сразу в двух направлениях (`OUTBOUND_EXTERNAL` + `INBOUND_SUO`) использовать
+  `operation=PREVIEW_HTTP_PROCESSING_MATRIX` (возвращает `directionPreviews[]` с request/response preview для каждого направления).
+- Для backup/миграции профиля programmable HTTP processing использовать:
+  - `operation=EXPORT_HTTP_PROCESSING_PROFILE` (выгрузка текущего профиля);
+  - `operation=IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW` (валидация candidate-профиля, включая `directionHeaderName` и `responseBodyMaxChars`);
+  - `operation=IMPORT_HTTP_PROCESSING_PROFILE_APPLY` (применение профиля после preview).
+- Для расширения/подбора интеграции с внешними шинами заказчика использовать
+  `GET /api/v1/program/connectors/catalog` и сверять `supportedBrokerProfiles` (type/description/propertyTemplate).
+- Для точечного предпросмотра конкретного типа шины использовать
+  `POST /api/v1/program/studio/operations` с `operation=PREVIEW_CONNECTOR_PROFILE` и `brokerType`.
+- Перед включением нового broker в прод-контур проверять параметры через
+  `POST /api/v1/program/studio/operations` с `operation=VALIDATE_CONNECTOR_CONFIG`
+  (`brokerType` + `properties`) и устранять `missingRequiredProperties`.
+- Для миграции/backup-конфигураций внешних коннекторов использовать:
+  - `operation=EXPORT_CONNECTOR_PRESETS` (экспорт текущих REST/broker presets + profiles + metadata `formatVersion/exportedAt`);
+  - `operation=IMPORT_CONNECTOR_PRESETS_PREVIEW` (dry-run проверка импортируемого набора: `valid`, `duplicateInImport`, `conflictsWithExisting`, итоговый флаг `summary.importable`).
+  - `operation=IMPORT_CONNECTOR_PRESETS_DIFF` (сравнение импортируемого набора с текущими настройками: `CREATE|UPDATE|NO_CHANGES` + summary по изменениям).
+  - `operation=IMPORT_CONNECTOR_PRESETS_APPLY` (применение после preview, с параметрами `replaceExisting=true|false`, `includeRollbackSnapshot=true|false`; при невалидном наборе вернется `applied=false` + preview-детали).
+- Для единой миграции HTTP processing и connector presets использовать:
+  - `operation=EXPORT_INTEGRATION_CONNECTOR_BUNDLE` (экспорт единого bundle с секциями `httpProcessingProfile` и `connectorPresets`).
+  - `operation=IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW` (комбинированный dry-run с проверкой двух секций одновременно).
+  - `operation=IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY` (применение bundle после успешного preview; поддерживаются `replaceExisting` и `includeRollbackSnapshot`).
 - Для диагностики IDE/GUI редактора выполнять `GET /api/v1/program/studio/bootstrap` и сверять блоки `ide/runtime/connectors/eventing/settings/gui`.
+- Для CRM-кейсов клиентской идентификации (телефон/СНИЛС/ИНН и т.п.) использовать:
+  - `POST /api/v1/program/connectors/crm/identify-client` — поиск клиента во внешней CRM;
+  - `POST /api/v1/program/connectors/crm/medical-services` — доступные медицинские услуги по найденному клиенту;
+  - `POST /api/v1/program/connectors/crm/prebooking` — данные предварительной записи/предбронирования клиента.
 - Для быстрой операторской сводки использовать `GET /api/v1/program/studio/dashboard` (включает dashboard snapshot, connectors health и метрики VisitManager).
 - Для точечной диагностики использовать studio operations:
   - `SNAPSHOT_INBOX_OUTBOX` — срез backlog inbox/outbox с фильтрацией статуса;
   - `SNAPSHOT_VISIT_MANAGERS` — срез конфигурации VisitManager/маршрутизации;
   - `SNAPSHOT_BRANCH_CACHE` — срез кэша отделений (total/byVisitManager/recent, где `recent` отсортирован по `updatedAt` по убыванию, далее по `branchId` и `visitManagerId`);
   - `SNAPSHOT_EXTERNAL_SERVICES` — срез внешних REST-сервисов и message brokers;
-  - `SNAPSHOT_RUNTIME_SETTINGS` — runtime-срез операционных настроек панели (eventing/aggregation/branch-cache);
+  - `SNAPSHOT_RUNTIME_SETTINGS` — runtime-срез операционных настроек панели (eventing/aggregation/branch-cache/http-processing);
+  - `PREVIEW_HTTP_PROCESSING` — dry-run превью кастомной обработки programmable HTTP request/response (наружу/внутрь СУО) без сетевого вызова;
   - `EXPORT_EDITOR_SETTINGS` — экспорт настроек IDE для backup;
   - `PREVIEW_EVENTING_MAINTENANCE` — dry-run очистки inbox/outbox/DLQ/processed;
   - `EXPORT_EVENTING_SNAPSHOT` — экспорт eventing snapshot для import/export сценариев;

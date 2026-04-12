@@ -77,7 +77,27 @@ mvn exec:java
   - при старте сервис восстанавливает processed/DLQ/outbox из snapshot.
 - Расширение reliability inbox/outbox:
   - outbox поддерживает backoff/dead-state (`outbox-backoff-seconds`, `outbox-max-attempts`);
+  - опциональный auto-flush outbox по расписанию (`outbox-auto-flush-enabled`, `outbox-auto-flush-batch-size`, `outbox-auto-flush-interval`);
   - endpoint восстановления зависших inbox-записей: `POST /api/v1/events/inbox/recover-stale`.
+- Внешний transport mediation для событий:
+  - поддержан HTTP webhook transport (`integration.eventing.webhook.*`) для доставки outbox-событий во внешнюю шину/шлюз;
+  - webhook может фильтровать публикацию по аудиториям получателей (`integration.eventing.webhook.target-systems`) на основе `meta.targetSystems`;
+  - можно использовать совместно с Kafka transport (композитная публикация в оба канала).
+- Кастомизируемая обработка HTTP request/response для programmable-модуля:
+  - `integration.programmable-api.http-processing.*` управляет обработкой исходящих запросов (наружу) и запросов во внутрь СУО (VisitManager);
+  - поддержаны direction-header, опциональная envelope-обертка тела и нормализация/preview JSON-ответов.
+  - для GUI добавлены studio-операции управления HTTP processing: `EXPORT_HTTP_PROCESSING_PROFILE`, `IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW`, `IMPORT_HTTP_PROCESSING_PROFILE_APPLY`, а также `PREVIEW_HTTP_PROCESSING`/`PREVIEW_HTTP_PROCESSING_MATRIX` (direction-aware preview), `PREVIEW_CONNECTOR_PROFILE` и `VALIDATE_CONNECTOR_CONFIG`.
+- Расширенный каталог коннекторов внешних шин/брокеров для GUI:
+  - `GET /api/v1/program/connectors/catalog` и `GET /api/v1/program/connectors/broker-types` возвращают `supportedBrokerProfiles` с шаблонами параметров;
+  - покрыты профили Kafka/Redpanda, RabbitMQ, NATS, Pulsar, Azure Service Bus, Google Pub/Sub, AWS Kinesis, IBM MQ, Solace, MQTT и webhook.
+  - studio operations поддерживают экспорт/предпросмотр/diff/применение импорта presets коннекторов: `EXPORT_CONNECTOR_PRESETS` (с metadata formatVersion/exportedAt), `IMPORT_CONNECTOR_PRESETS_PREVIEW` (валидность, дубликаты, конфликты id с текущей конфигурацией), `IMPORT_CONNECTOR_PRESETS_DIFF` (create/update/no_changes) и `IMPORT_CONNECTOR_PRESETS_APPLY` (safe apply + rollbackSnapshot после preview).
+  - для комплексной миграции интеграции добавлен единый bundle workflow: `EXPORT_INTEGRATION_CONNECTOR_BUNDLE`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY` (совместный перенос HTTP processing + connector presets одним пакетом).
+- CRM/МИС интеграция по идентификатору клиента:
+  - добавлены endpoint-и `POST /api/v1/program/connectors/crm/identify-client`, `POST /api/v1/program/connectors/crm/medical-services`, `POST /api/v1/program/connectors/crm/prebooking`;
+  - реализован расширяемый интерфейс `CustomerCrmIntegrationGateway` (по умолчанию через внешний REST connector), поддерживающий сценарии поиска клиента (телефон/СНИЛС/ИНН), получения доступных услуг и данных предзаписи.
+- Runtime safety guard:
+  - на старте сервис оценивает доступные CPU/RAM среды и при дефиците автоматически снижает рискованные лимиты (`aggregate-max-branches`, `aggregate-request-timeout-millis`, `eventing.max-payload-fields`, `eventing.outbox-auto-flush-batch-size`);
+  - статус защиты отражается в `GET /health/readiness` компонентом `runtime-safety` (`UP`/`DEGRADED`).
 - Локальный каталог кэшей/инструментария: `cache/` (не коммитится, бинарные артефакты/браузеры/кэш npm).
 - Формат ITS: ZIP-архив с расширением `.its`, содержащий `template.yml` (`template/parameters/scripts`) и `scripts/*.groovy`.
 - При импорте можно получить структуру параметров из `template.yml`, заполнить значения через GUI и выполнить подстановку `{{paramKey}}` в скриптах.

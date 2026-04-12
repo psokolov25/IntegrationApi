@@ -103,4 +103,24 @@ class CustomerMessageBusGatewayTest {
         );
         Assertions.assertEquals("ACCEPTED", result.get("status"));
     }
+
+    @Test
+    void shouldExposeBrokerProfilesForGuiCatalog() {
+        LoggingMessageBusAdapter loggingAdapter = new LoggingMessageBusAdapter();
+        HttpWebhookMessageBusAdapter webhookAdapter = new HttpWebhookMessageBusAdapter(new com.fasterxml.jackson.databind.ObjectMapper());
+
+        List<Map<String, Object>> loggingProfiles = loggingAdapter.supportedBrokerProfiles();
+        List<Map<String, Object>> webhookProfiles = webhookAdapter.supportedBrokerProfiles();
+
+        Assertions.assertTrue(loggingProfiles.stream()
+                .anyMatch(profile -> "KAFKA".equals(profile.get("type"))));
+        Assertions.assertTrue(loggingProfiles.stream()
+                .anyMatch(profile -> "SOLACE".equals(profile.get("type"))));
+        Assertions.assertTrue(loggingProfiles.stream()
+                .anyMatch(profile -> "AWS_SNS".equals(profile.get("type"))));
+        Assertions.assertTrue(loggingProfiles.stream()
+                .anyMatch(profile -> "AMQP_1_0".equals(profile.get("type"))));
+        Assertions.assertTrue(webhookProfiles.stream()
+                .anyMatch(profile -> "WEBHOOK_HTTP".equals(profile.get("type"))));
+    }
 }

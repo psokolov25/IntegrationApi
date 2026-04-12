@@ -33,6 +33,13 @@ integration:
     - dev-api-key
   programmable-api:
     enabled: true
+    http-processing:
+      enabled: true
+      add-direction-header: true
+      direction-header-name: X-Integration-Direction
+      request-envelope-enabled: false
+      response-body-max-chars: 4000
+      parse-json-body: true
     script-storage:
       redis:
         enabled: false
@@ -76,6 +83,10 @@ integration:
     state-persistence-path: cache/eventing-state/snapshot.json
     outbox-backoff-seconds: 5
     outbox-max-attempts: 20
+    outbox-auto-flush-enabled: false
+    outbox-auto-flush-batch-size: 100
+    outbox-auto-flush-interval: 30s
+    outbox-auto-flush-initial-delay: 10s
     inbox-processing-timeout-seconds: 120
     max-retries: 2
     max-payload-fields: 100
@@ -92,6 +103,15 @@ integration:
       enabled: false
       inbound-topic: integration.inbound
       outbound-topic: integration.outbound
+    webhook:
+      enabled: false
+      url: ""
+      auth-header: Authorization
+      auth-token: ""
+      target-systems: []
+      connect-timeout-millis: 1000
+      read-timeout-millis: 3000
+      headers: {}
     entity-changed-branch-mapping:
       enabled: true
       event-type: ENTITY_CHANGED

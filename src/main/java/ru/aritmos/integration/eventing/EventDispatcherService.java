@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Event pipeline: ingestion -> validation -> idempotency -> dispatch -> retry/DLQ.
  */
 @Singleton
-public class EventDispatcherService {
+public class EventDispatcherService implements EventOutboxFlusher {
 
     private final IntegrationGatewayConfiguration configuration;
     private final EventInboxService inboxService;
