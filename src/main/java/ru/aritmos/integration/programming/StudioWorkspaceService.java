@@ -2,11 +2,13 @@ package ru.aritmos.integration.programming;
 
 import jakarta.inject.Singleton;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
+import ru.aritmos.integration.domain.BranchStateDto;
 import ru.aritmos.integration.eventing.EventInboxService;
 import ru.aritmos.integration.eventing.EventOutboxService;
 import ru.aritmos.integration.service.BranchStateCache;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -215,7 +217,13 @@ public class StudioWorkspaceService {
                     "generatedAt", Instant.now().toString()
             );
         }
-        List<Map<String, Object>> recent = branchStateCache.snapshot().stream()
+        List<BranchStateDto> snapshot = branchStateCache.snapshot();
+        List<Map<String, Object>> recent = snapshot.stream()
+                .sorted(Comparator
+                        .comparing(BranchStateDto::updatedAt,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(BranchStateDto::branchId, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(BranchStateDto::sourceVisitManagerId, Comparator.nullsLast(Comparator.naturalOrder())))
                 .limit(safeLimit)
                 .map(state -> {
                     Map<String, Object> item = new LinkedHashMap<>();
@@ -228,13 +236,13 @@ public class StudioWorkspaceService {
                 })
                 .toList();
 
-        Map<String, Long> byVisitManager = branchStateCache.snapshot().stream()
+        Map<String, Long> byVisitManager = snapshot.stream()
                 .collect(Collectors.groupingBy(item -> item.sourceVisitManagerId() == null ? "" : item.sourceVisitManagerId(),
                         LinkedHashMap::new, Collectors.counting()));
 
         return Map.of(
                 "enabled", true,
-                "total", branchStateCache.snapshot().size(),
+                "total", snapshot.size(),
                 "limit", safeLimit,
                 "byVisitManager", byVisitManager,
                 "recent", recent,

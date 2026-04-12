@@ -201,9 +201,81 @@ class StudioWorkspaceServiceTest {
         Assertions.assertEquals(cfg.getAggregateMaxBranches(), runtimeSettings.get("aggregateMaxBranches"));
     }
 
+    @Test
+    void shouldSortBranchStateRecentByUpdatedAtDesc() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        BranchStateCache branchStateCache = new BranchStateCache(cfg);
+        branchStateCache.put(new BranchStateDto(
+                "BR-OLD",
+                "vm-main",
+                "OPEN",
+                "09:00-18:00",
+                1,
+                Instant.parse("2026-04-01T10:00:00Z"),
+                false,
+                "system:eventing"
+        ));
+        branchStateCache.put(new BranchStateDto(
+                "BR-NEW",
+                "vm-main",
+                "PAUSED",
+                "09:00-18:00",
+                2,
+                Instant.parse("2026-04-01T12:00:00Z"),
+                false,
+                "system:eventing"
+        ));
+        branchStateCache.put(new BranchStateDto(
+                "BR-NEW",
+                "vm-backup",
+                "OPEN",
+                "09:00-18:00",
+                3,
+                Instant.parse("2026-04-01T12:00:00Z"),
+                false,
+                "system:eventing"
+        ));
+        branchStateCache.put(new BranchStateDto(
+                "BR-NO-TIME",
+                "vm-main",
+                "UNKNOWN",
+                "09:00-18:00",
+                0,
+                null,
+                false,
+                "system:eventing"
+        ));
+
+        StudioWorkspaceService service = new StudioWorkspaceService(
+                cfg,
+                new EventInboxService(),
+                new EventOutboxService(),
+                new InMemoryGroovyScriptStorage(),
+                new ScriptDebugHistoryService(),
+                List.of(new KafkaOnlyBusAdapter()),
+                branchStateCache
+        );
+
+        Map<String, Object> snapshot = service.buildBranchStateCacheSnapshot(10);
+        List<Map<String, Object>> recent = castListOfMaps(snapshot.get("recent"));
+
+        Assertions.assertEquals(4, recent.size());
+        Assertions.assertEquals("BR-NEW", recent.get(0).get("branchId"));
+        Assertions.assertEquals("vm-backup", recent.get(0).get("visitManagerId"));
+        Assertions.assertEquals("BR-NEW", recent.get(1).get("branchId"));
+        Assertions.assertEquals("vm-main", recent.get(1).get("visitManagerId"));
+        Assertions.assertEquals("BR-OLD", recent.get(2).get("branchId"));
+        Assertions.assertEquals("BR-NO-TIME", recent.get(3).get("branchId"));
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> cast(Object value) {
         return (Map<String, Object>) value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> castListOfMaps(Object value) {
+        return (List<Map<String, Object>>) value;
     }
 
     private static class KafkaOnlyBusAdapter implements CustomerMessageBusAdapter {
