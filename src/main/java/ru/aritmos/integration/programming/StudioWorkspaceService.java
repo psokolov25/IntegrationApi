@@ -364,71 +364,105 @@ public class StudioWorkspaceService {
      * Операционный playbook для GUI/IDE: последовательность проверок по всем ключевым группам.
      */
     public List<Map<String, Object>> buildPlaybook() {
-        return List.of(
-                Map.of(
-                        "order", 1,
-                        "group", "inbox-outbox",
-                        "title", "Проверить backlog eventing",
-                        "check", "Сверить inbox.processing и outbox.failed/dead в studio bootstrap",
-                        "api", "GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20"
-                ),
-                Map.of(
-                        "order", 2,
-                        "group", "groovy-runtime",
-                        "title", "Проверить runtime Groovy и storage",
-                        "check", "Убедиться, что runtime.scriptStorage и scriptCount соответствуют ожидаемым",
-                        "api", "GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20"
-                ),
-                Map.of(
-                        "order", 3,
-                        "group", "connectors",
-                        "title", "Проверить коннекторы и типы брокеров",
-                        "check", "Проверить unsupportedBrokerTypes и connectors health",
-                        "api", "GET /api/v1/program/connectors/health"
-                ),
-                Map.of(
-                        "order", 4,
-                        "group", "branch-cache",
-                        "title", "Проверить актуальность branch-state кэша",
-                        "check", "Сверить total/byVisitManager/recent в branch-state snapshot и наличие свежих updatedAt",
-                        "api", "POST /api/v1/program/studio/operations {\"operation\":\"SNAPSHOT_BRANCH_CACHE\",\"parameters\":{\"limit\":50}}"
-                ),
-                Map.of(
-                        "order", 5,
-                        "group", "ide-editor",
-                        "title", "Проверить IDE-историю и настройки",
-                        "check", "Сверить debugHistoryRecent + editorSettings/editorCapabilities",
-                        "api", "GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20"
-                ),
-                Map.of(
-                        "order", 6,
-                        "group", "settings",
-                        "title", "Проверить и при необходимости обновить настройки редактора",
-                        "check", "Проверить theme/fontSize и при необходимости выполнить backup/restore настроек",
-                        "api", "GET|PUT /api/v1/program/studio/settings, GET /api/v1/program/studio/settings/export, POST /api/v1/program/studio/settings/import"
-                ),
-                Map.of(
-                        "order", 7,
-                        "group", "runtime-settings",
-                        "title", "Проверить runtime-настройки контрольной панели",
-                        "check", "Сверить eventing/aggregation/branch-cache параметры в runtimeSettings snapshot",
-                        "api", "POST /api/v1/program/studio/operations {\"operation\":\"SNAPSHOT_RUNTIME_SETTINGS\"}"
-                ),
-                Map.of(
-                        "order", 8,
-                        "group", "import-export",
-                        "title", "Проверить импорт/экспорт integration templates",
-                        "check", "Выполнить preview/import/export ITS архива через GUI workflow",
-                        "api", "POST /api/v1/program/templates/import/preview, POST /api/v1/program/templates/import, POST /api/v1/program/templates/export"
-                ),
-                Map.of(
-                        "order", 9,
-                        "group", "gui-ops",
-                        "title", "Выполнить операционные действия",
-                        "check", "Запустить FLUSH_OUTBOX / RECOVER_STALE_INBOX / SNAPSHOT_BRANCH_CACHE / SNAPSHOT_RUNTIME_SETTINGS / CLEAR_DEBUG_HISTORY / EXPORT_EDITOR_SETTINGS / PREVIEW_EVENTING_MAINTENANCE / EXPORT_EVENTING_SNAPSHOT",
-                        "api", "POST /api/v1/program/studio/operations"
-                )
-        );
+        return buildPlaybook("importance");
+    }
+
+    /**
+     * Операционный playbook для GUI/IDE с выбором режима сортировки.
+     *
+     * @param sortBy поддерживаются режимы {@code importance} и {@code order}
+     */
+    public List<Map<String, Object>> buildPlaybook(String sortBy) {
+        String normalizedSort = normalizePlaybookSort(sortBy);
+        List<Map<String, Object>> playbook = new java.util.ArrayList<>(List.of(
+                playbookItem(1, "HIGH", "connectors-health", "Проверить доступность внешних коннекторов заказчика",
+                        "Убедиться, что все активные REST/message-bus коннекторы находятся в статусе UP",
+                        "GET /api/v1/program/connectors/health"),
+                playbookItem(2, "HIGH", "visit-manager-routing", "Проверить маршрутизацию в целевой VisitManager",
+                        "Сверить список активных VisitManager-инстансов и маршрутизацию target/default",
+                        "POST /api/v1/program/studio/operations {\"operation\":\"SNAPSHOT_VISIT_MANAGERS\"}"),
+                playbookItem(3, "HIGH", "queue-smoke", "Проверить чтение очереди через gateway API",
+                        "Выполнить smoke по очереди конкретного отделения и проверить корректность target маршрутизации",
+                        "GET /api/v1/queues?branchId={branchId}&target={targetVisitManagerId}"),
+                playbookItem(4, "HIGH", "branch-state-sync", "Проверить синхронизацию branch-state",
+                        "Проверить refresh branch-state и консистентность данных в кэше/ответе API",
+                        "POST /api/v1/branches/{branchId}/state/refresh?target={targetVisitManagerId}, GET /api/v1/branches/{branchId}/state?target={targetVisitManagerId}"),
+                playbookItem(5, "HIGH", "external-rest-smoke", "Проверить интеграцию с внешним REST заказчика",
+                        "Выполнить тестовый вызов через настроенный REST-коннектор и проверить downstream ответ",
+                        "POST /api/v1/program/connectors/rest/invoke"),
+                playbookItem(6, "MEDIUM", "message-bus-smoke", "Проверить публикацию в внешнюю шину заказчика",
+                        "Отправить тестовое событие в broker и проверить доставку по topic/key",
+                        "POST /api/v1/program/connectors/bus/publish"),
+                playbookItem(7, "HIGH", "inbox-outbox", "Проверить backlog eventing",
+                        "Сверить inbox.processing и outbox.failed/dead в studio bootstrap",
+                        "GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20"),
+                playbookItem(8, "MEDIUM", "groovy-runtime", "Проверить runtime Groovy и storage",
+                        "Убедиться, что runtime.scriptStorage и scriptCount соответствуют ожидаемым",
+                        "GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20"),
+                playbookItem(9, "MEDIUM", "connectors", "Проверить коннекторы и типы брокеров",
+                        "Проверить unsupportedBrokerTypes и connectors health",
+                        "GET /api/v1/program/connectors/health"),
+                playbookItem(10, "MEDIUM", "branch-cache", "Проверить актуальность branch-state кэша",
+                        "Сверить total/byVisitManager/recent в branch-state snapshot и наличие свежих updatedAt",
+                        "POST /api/v1/program/studio/operations {\"operation\":\"SNAPSHOT_BRANCH_CACHE\",\"parameters\":{\"limit\":50}}"),
+                playbookItem(11, "MEDIUM", "ide-editor", "Проверить IDE-историю и настройки",
+                        "Сверить debugHistoryRecent + editorSettings/editorCapabilities",
+                        "GET /api/v1/program/studio/bootstrap?debugHistoryLimit=20"),
+                playbookItem(12, "MEDIUM", "settings", "Проверить и при необходимости обновить настройки редактора",
+                        "Проверить theme/fontSize и при необходимости выполнить backup/restore настроек",
+                        "GET|PUT /api/v1/program/studio/settings, GET /api/v1/program/studio/settings/export, POST /api/v1/program/studio/settings/import"),
+                playbookItem(13, "MEDIUM", "runtime-settings", "Проверить runtime-настройки контрольной панели",
+                        "Сверить eventing/aggregation/branch-cache параметры в runtimeSettings snapshot",
+                        "POST /api/v1/program/studio/operations {\"operation\":\"SNAPSHOT_RUNTIME_SETTINGS\"}"),
+                playbookItem(14, "LOW", "import-export", "Проверить импорт/экспорт integration templates",
+                        "Выполнить preview/import/export ITS архива через GUI workflow",
+                        "POST /api/v1/program/templates/import/preview, POST /api/v1/program/templates/import, POST /api/v1/program/templates/export"),
+                playbookItem(15, "LOW", "gui-ops", "Выполнить операционные действия",
+                        "Запустить FLUSH_OUTBOX / RECOVER_STALE_INBOX / SNAPSHOT_BRANCH_CACHE / SNAPSHOT_RUNTIME_SETTINGS / CLEAR_DEBUG_HISTORY / EXPORT_EDITOR_SETTINGS / PREVIEW_EVENTING_MAINTENANCE / EXPORT_EVENTING_SNAPSHOT",
+                        "POST /api/v1/program/studio/operations")
+        ));
+
+        if ("order".equals(normalizedSort)) {
+            playbook.sort(java.util.Comparator.comparingInt(item -> (Integer) item.get("order")));
+            return List.copyOf(playbook);
+        }
+
+        playbook.sort(java.util.Comparator
+                .comparingInt((Map<String, Object> item) -> importanceRank((String) item.get("importance")))
+                .thenComparingInt(item -> (Integer) item.get("order")));
+        return List.copyOf(playbook);
+    }
+
+    private String normalizePlaybookSort(String sortBy) {
+        String normalized = sortBy == null ? "importance" : sortBy.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("importance".equals(normalized) || "order".equals(normalized)) {
+            return normalized;
+        }
+        throw new IllegalArgumentException("sortBy поддерживает только значения: importance, order");
+    }
+
+    private Map<String, Object> playbookItem(int order,
+                                             String importance,
+                                             String group,
+                                             String title,
+                                             String check,
+                                             String api) {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("order", order);
+        item.put("importance", importance);
+        item.put("group", group);
+        item.put("title", title);
+        item.put("check", check);
+        item.put("api", api);
+        return item;
+    }
+
+    private int importanceRank(String importance) {
+        return switch (importance) {
+            case "HIGH" -> 1;
+            case "MEDIUM" -> 2;
+            default -> 3;
+        };
     }
 
     private List<String> buildWarnings(List<String> unsupportedBrokerTypes, int deadOutbox, int processingInbox) {

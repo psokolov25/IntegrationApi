@@ -142,10 +142,47 @@ class StudioWorkspaceServiceTest {
         );
 
         List<Map<String, Object>> playbook = service.buildPlaybook();
-        Assertions.assertEquals(9, playbook.size());
-        Assertions.assertEquals("inbox-outbox", playbook.get(0).get("group"));
-        Assertions.assertEquals("import-export", playbook.get(7).get("group"));
+        Assertions.assertEquals(15, playbook.size());
+        Assertions.assertEquals("connectors-health", playbook.get(0).get("group"));
+        Assertions.assertEquals("visit-manager-routing", playbook.get(1).get("group"));
         Assertions.assertEquals("gui-ops", playbook.get(playbook.size() - 1).get("group"));
+        Assertions.assertEquals("HIGH", playbook.get(0).get("importance"));
+    }
+
+    @Test
+    void shouldSupportPlaybookSortingByOriginalOrder() {
+        StudioWorkspaceService service = new StudioWorkspaceService(
+                new IntegrationGatewayConfiguration(),
+                new EventInboxService(),
+                new EventOutboxService(),
+                new InMemoryGroovyScriptStorage(),
+                new ScriptDebugHistoryService(),
+                List.of(new KafkaOnlyBusAdapter())
+        );
+
+        List<Map<String, Object>> ordered = service.buildPlaybook("order");
+        Assertions.assertEquals(15, ordered.size());
+        Assertions.assertEquals("connectors-health", ordered.get(0).get("group"));
+        Assertions.assertEquals("message-bus-smoke", ordered.get(5).get("group"));
+        Assertions.assertEquals("gui-ops", ordered.get(14).get("group"));
+    }
+
+    @Test
+    void shouldRejectUnsupportedPlaybookSortMode() {
+        StudioWorkspaceService service = new StudioWorkspaceService(
+                new IntegrationGatewayConfiguration(),
+                new EventInboxService(),
+                new EventOutboxService(),
+                new InMemoryGroovyScriptStorage(),
+                new ScriptDebugHistoryService(),
+                List.of(new KafkaOnlyBusAdapter())
+        );
+
+        IllegalArgumentException error = Assertions.assertThrows(
+                IllegalArgumentException.class,
+                () -> service.buildPlaybook("priority")
+        );
+        Assertions.assertEquals("sortBy поддерживает только значения: importance, order", error.getMessage());
     }
 
     @Test
