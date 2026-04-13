@@ -54,7 +54,9 @@
   - `POST /api/v1/program/connectors/crm/identify-client` (поиск клиента во внешней CRM по строке идентификатора).
   - `POST /api/v1/program/connectors/crm/medical-services` (получение перечня доступных медуслуг по идентификатору клиента).
   - `POST /api/v1/program/connectors/crm/prebooking` (получение данных о предварительной записи по идентификатору клиента).
-  - `GET /api/v1/program/studio/playbook?sortBy=importance|order` (операционный чек-лист с приоритетом базовых интеграционных задач: connectors health, routing, queue smoke, branch-state sync, внешние REST/message bus интеграции; по умолчанию сортировка по важности).
+  - `GET /api/v1/program/studio/playbook?sortBy=importance|order|group&sortOrder=asc|desc&importance=HIGH|MEDIUM|LOW(,...)&group=...(,...)&q=...&limit=1..200&offset=0..10000` (операционный чек-лист с приоритетом базовых интеграционных задач: connectors health, routing, queue smoke, branch-state sync, внешние REST/message bus интеграции; поддерживаются сортировка/направление сортировки, фильтры по уровню важности/группе, полнотекстовый поиск по шагам и пагинация `offset/limit`; при неверных `sortBy/sortOrder/importance/group/limit/offset` сервис возвращает валидационную ошибку со списком допустимых значений).
+  - `GET /api/v1/program/studio/playbook/page?sortBy=importance|order|group&sortOrder=asc|desc&importance=HIGH|MEDIUM|LOW(,...)&group=...(,...)&q=...&limit=1..200&offset=0..10000` (версия playbook для GUI-пагинатора: возвращает `items` и метаданные `total`, `limit`, `offset`, `hasMore`).
+  - `GET /api/v1/program/studio/playbook/options` (подсказки для GUI: допустимые `sortBy`, `sortOrder`, `importance`, каталог `group` для фильтров playbook, лимиты `limit.default=50`, `limit.max=200` и `offset.default=0`, `offset.max=10000`).
 
 - ITS (integration templates) для programmable handlers:
   - Предпросмотр: `POST /api/v1/program/templates/import/preview` (multipart `archive`).
