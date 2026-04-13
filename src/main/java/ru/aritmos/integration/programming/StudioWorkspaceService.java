@@ -405,17 +405,194 @@ public class StudioWorkspaceService {
      * Операционный playbook для GUI/IDE: последовательность проверок по всем ключевым группам.
      */
     public List<Map<String, Object>> buildPlaybook() {
-        return buildPlaybook("importance");
+        return buildPlaybook("importance", null, null, null, null);
     }
 
     /**
      * Операционный playbook для GUI/IDE с выбором режима сортировки.
      *
-     * @param sortBy поддерживаются режимы {@code importance} и {@code order}
+     * @param sortBy поддерживаются режимы {@code importance}, {@code order} и {@code group}
      */
     public List<Map<String, Object>> buildPlaybook(String sortBy) {
+        return buildPlaybook(sortBy, null, null, null, null);
+    }
+
+    /**
+     * Операционный playbook для GUI/IDE с фильтрацией по важности и группе.
+     *
+     * @param sortBy поддерживаются режимы {@code importance}, {@code order} и {@code group}
+     * @param importanceFilter фильтр по важности ({@code HIGH|MEDIUM|LOW}, можно список через запятую),
+     *                         пустое значение отключает фильтр
+     * @param groupFilter фильтр по группе playbook (например, {@code branch-state-sync}, можно список через запятую),
+     *                    пустое значение отключает фильтр
+     */
+    public List<Map<String, Object>> buildPlaybook(String sortBy, String importanceFilter, String groupFilter) {
+        return buildPlaybook(sortBy, importanceFilter, groupFilter, null, null);
+    }
+
+    /**
+     * Операционный playbook для GUI/IDE с фильтрацией и направлением сортировки.
+     *
+     * @param sortBy поддерживаются режимы {@code importance}, {@code order} и {@code group}
+     * @param importanceFilter фильтр по важности ({@code HIGH|MEDIUM|LOW}, можно список через запятую),
+     *                         пустое значение отключает фильтр
+     * @param groupFilter фильтр по группе playbook (например, {@code branch-state-sync}, можно список через запятую),
+     *                    пустое значение отключает фильтр
+     * @param sortOrder направление сортировки ({@code asc|desc}), по умолчанию {@code asc}
+     */
+    public List<Map<String, Object>> buildPlaybook(String sortBy,
+                                                   String importanceFilter,
+                                                   String groupFilter,
+                                                   String sortOrder) {
+        return buildPlaybook(sortBy, importanceFilter, groupFilter, sortOrder, null);
+    }
+
+    /**
+     * Операционный playbook для GUI/IDE с фильтрацией, направлением сортировки и поисковым запросом.
+     *
+     * @param sortBy поддерживаются режимы {@code importance}, {@code order} и {@code group}
+     * @param importanceFilter фильтр по важности ({@code HIGH|MEDIUM|LOW}, можно список через запятую),
+     *                         пустое значение отключает фильтр
+     * @param groupFilter фильтр по группе playbook (например, {@code branch-state-sync}, можно список через запятую),
+     *                    пустое значение отключает фильтр
+     * @param sortOrder направление сортировки ({@code asc|desc}), по умолчанию {@code asc}
+     * @param query полнотекстовый фильтр по полям {@code title/check/api/group/importance}, пустое значение отключает поиск
+     */
+    public List<Map<String, Object>> buildPlaybook(String sortBy,
+                                                   String importanceFilter,
+                                                   String groupFilter,
+                                                   String sortOrder,
+                                                   String query) {
+        return buildPlaybook(sortBy, importanceFilter, groupFilter, sortOrder, query, null);
+    }
+
+    /**
+     * Операционный playbook с дополнительным ограничением количества шагов.
+     *
+     * @param limit максимальное количество элементов в ответе ({@code 1..200}), пустое значение -> без ограничения
+     */
+    public List<Map<String, Object>> buildPlaybook(String sortBy,
+                                                   String importanceFilter,
+                                                   String groupFilter,
+                                                   String sortOrder,
+                                                   String query,
+                                                   Integer limit) {
+        return buildPlaybook(sortBy, importanceFilter, groupFilter, sortOrder, query, limit, null);
+    }
+
+    /**
+     * Операционный playbook с пагинацией offset/limit.
+     *
+     * @param offset смещение от начала выборки ({@code 0..10000}), пустое значение -> {@code 0}
+     */
+    public List<Map<String, Object>> buildPlaybook(String sortBy,
+                                                   String importanceFilter,
+                                                   String groupFilter,
+                                                   String sortOrder,
+                                                   String query,
+                                                   Integer limit,
+                                                   Integer offset) {
+        return buildPlaybookSlice(sortBy, importanceFilter, groupFilter, sortOrder, query, limit, offset).items();
+    }
+
+    /**
+     * Возвращает playbook вместе с метаданными пагинации для GUI.
+     */
+    public Map<String, Object> buildPlaybookPage(String sortBy,
+                                                 String importanceFilter,
+                                                 String groupFilter,
+                                                 String sortOrder,
+                                                 String query,
+                                                 Integer limit,
+                                                 Integer offset) {
+        PlaybookSlice slice = buildPlaybookSlice(sortBy, importanceFilter, groupFilter, sortOrder, query, limit, offset);
+        return Map.of(
+                "items", slice.items(),
+                "total", slice.total(),
+                "offset", slice.offset(),
+                "limit", slice.limit(),
+                "hasMore", slice.hasMore()
+        );
+    }
+
+    private PlaybookSlice buildPlaybookSlice(String sortBy,
+                                             String importanceFilter,
+                                             String groupFilter,
+                                             String sortOrder,
+                                             String query,
+                                             Integer limit,
+                                             Integer offset) {
         String normalizedSort = normalizePlaybookSort(sortBy);
-        List<Map<String, Object>> playbook = new java.util.ArrayList<>(List.of(
+        boolean descending = isDescendingSort(sortOrder);
+        String normalizedQuery = normalizeQuery(query);
+        Integer normalizedLimit = normalizeLimit(limit);
+        int normalizedOffset = normalizeOffset(offset);
+        java.util.Set<String> normalizedImportance = normalizeImportanceFilter(importanceFilter);
+        List<Map<String, Object>> playbook = new java.util.ArrayList<>(basePlaybook());
+        java.util.Set<String> normalizedGroup = normalizeGroupFilter(groupFilter, playbook);
+        playbook.removeIf(item -> !matchesPlaybookFilter(item, normalizedImportance, normalizedGroup));
+        playbook.removeIf(item -> !matchesPlaybookQuery(item, normalizedQuery));
+
+        java.util.Comparator<Map<String, Object>> comparator;
+        if ("order".equals(normalizedSort)) {
+            comparator = java.util.Comparator.comparingInt(item -> (Integer) item.get("order"));
+        } else if ("group".equals(normalizedSort)) {
+            comparator = java.util.Comparator
+                    .comparing((Map<String, Object> item) -> String.valueOf(item.get("group")))
+                    .thenComparingInt(item -> (Integer) item.get("order"));
+        } else {
+            comparator = java.util.Comparator
+                    .comparingInt((Map<String, Object> item) -> importanceRank((String) item.get("importance")))
+                    .thenComparingInt(item -> (Integer) item.get("order"));
+        }
+        if (descending) {
+            comparator = comparator.reversed();
+        }
+        playbook.sort(comparator);
+        int total = playbook.size();
+        int effectiveLimit = normalizedLimit == null ? total : normalizedLimit;
+        List<Map<String, Object>> paged = playbook;
+        if (normalizedOffset > 0) {
+            if (normalizedOffset >= total) {
+                return new PlaybookSlice(List.of(), total, normalizedOffset, effectiveLimit, false);
+            }
+            paged = new java.util.ArrayList<>(paged.subList(normalizedOffset, paged.size()));
+        }
+        if (normalizedLimit != null && paged.size() > normalizedLimit) {
+            paged = new java.util.ArrayList<>(paged.subList(0, normalizedLimit));
+        }
+        List<Map<String, Object>> items = List.copyOf(paged);
+        boolean hasMore = normalizedOffset + items.size() < total;
+        return new PlaybookSlice(items, total, normalizedOffset, effectiveLimit, hasMore);
+    }
+
+    /**
+     * Возвращает поддерживаемые параметры фильтрации/сортировки операционного playbook для GUI.
+     */
+    public Map<String, Object> playbookOptions() {
+        List<Map<String, Object>> basePlaybook = basePlaybook();
+        List<String> groups = basePlaybook.stream()
+                .map(item -> String.valueOf(item.get("group")))
+                .sorted()
+                .toList();
+        return Map.of(
+                "sortBy", List.of("importance", "order", "group"),
+                "sortOrder", List.of("asc", "desc"),
+                "importance", List.of("HIGH", "MEDIUM", "LOW"),
+                "groups", groups,
+                "limit", Map.of(
+                        "default", 50,
+                        "max", 200
+                ),
+                "offset", Map.of(
+                        "default", 0,
+                        "max", 10000
+                )
+        );
+    }
+
+    private List<Map<String, Object>> basePlaybook() {
+        return List.of(
                 playbookItem(1, "HIGH", "connectors-health", "Проверить доступность внешних коннекторов заказчика",
                         "Убедиться, что все активные REST/message-bus коннекторы находятся в статусе UP",
                         "GET /api/v1/program/connectors/health"),
@@ -461,25 +638,125 @@ public class StudioWorkspaceService {
                 playbookItem(15, "LOW", "gui-ops", "Выполнить операционные действия",
                         "Запустить FLUSH_OUTBOX / RECOVER_STALE_INBOX / SNAPSHOT_BRANCH_CACHE / SNAPSHOT_RUNTIME_SETTINGS / CLEAR_DEBUG_HISTORY / EXPORT_EDITOR_SETTINGS / PREVIEW_EVENTING_MAINTENANCE / EXPORT_EVENTING_SNAPSHOT",
                         "POST /api/v1/program/studio/operations")
-        ));
-
-        if ("order".equals(normalizedSort)) {
-            playbook.sort(java.util.Comparator.comparingInt(item -> (Integer) item.get("order")));
-            return List.copyOf(playbook);
-        }
-
-        playbook.sort(java.util.Comparator
-                .comparingInt((Map<String, Object> item) -> importanceRank((String) item.get("importance")))
-                .thenComparingInt(item -> (Integer) item.get("order")));
-        return List.copyOf(playbook);
+        );
     }
 
     private String normalizePlaybookSort(String sortBy) {
         String normalized = sortBy == null ? "importance" : sortBy.trim().toLowerCase(java.util.Locale.ROOT);
-        if ("importance".equals(normalized) || "order".equals(normalized)) {
+        if ("importance".equals(normalized) || "order".equals(normalized) || "group".equals(normalized)) {
             return normalized;
         }
-        throw new IllegalArgumentException("sortBy поддерживает только значения: importance, order");
+        throw new IllegalArgumentException("sortBy поддерживает только значения: importance, order, group");
+    }
+
+    private boolean isDescendingSort(String sortOrder) {
+        String normalized = sortOrder == null ? "asc" : sortOrder.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("asc".equals(normalized)) {
+            return false;
+        }
+        if ("desc".equals(normalized)) {
+            return true;
+        }
+        throw new IllegalArgumentException("sortOrder поддерживает только значения: asc, desc");
+    }
+
+    private String normalizeQuery(String query) {
+        if (query == null || query.isBlank()) {
+            return null;
+        }
+        return query.trim().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private Integer normalizeLimit(Integer limit) {
+        if (limit == null) {
+            return null;
+        }
+        if (limit < 1 || limit > 200) {
+            throw new IllegalArgumentException("limit поддерживает только значения в диапазоне 1..200");
+        }
+        return limit;
+    }
+
+    private record PlaybookSlice(List<Map<String, Object>> items,
+                                 int total,
+                                 int offset,
+                                 int limit,
+                                 boolean hasMore) {
+    }
+
+    private int normalizeOffset(Integer offset) {
+        if (offset == null) {
+            return 0;
+        }
+        if (offset < 0 || offset > 10000) {
+            throw new IllegalArgumentException("offset поддерживает только значения в диапазоне 0..10000");
+        }
+        return offset;
+    }
+
+    private java.util.Set<String> normalizeImportanceFilter(String importanceFilter) {
+        if (importanceFilter == null || importanceFilter.isBlank()) {
+            return java.util.Set.of();
+        }
+        java.util.Set<String> normalized = java.util.Arrays.stream(importanceFilter.split(","))
+                .map(String::trim)
+                .filter(token -> !token.isBlank())
+                .map(token -> token.toUpperCase(java.util.Locale.ROOT))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        boolean hasUnsupported = normalized.stream()
+                .anyMatch(token -> !"HIGH".equals(token) && !"MEDIUM".equals(token) && !"LOW".equals(token));
+        if (hasUnsupported) {
+            throw new IllegalArgumentException("importance поддерживает только значения: HIGH, MEDIUM, LOW (одно или несколько через запятую)");
+        }
+        return java.util.Set.copyOf(normalized);
+    }
+
+    private java.util.Set<String> normalizeGroupFilter(String groupFilter, List<Map<String, Object>> playbook) {
+        if (groupFilter == null || groupFilter.isBlank()) {
+            return java.util.Set.of();
+        }
+        java.util.Set<String> normalized = java.util.Arrays.stream(groupFilter.split(","))
+                .map(String::trim)
+                .filter(token -> !token.isBlank())
+                .map(token -> token.toLowerCase(java.util.Locale.ROOT))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        java.util.Set<String> allowedGroups = playbook.stream()
+                .map(item -> String.valueOf(item.get("group")))
+                .map(group -> group.toLowerCase(java.util.Locale.ROOT))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<String> unsupportedGroups = normalized.stream()
+                .filter(group -> !allowedGroups.contains(group))
+                .sorted()
+                .toList();
+        if (!unsupportedGroups.isEmpty()) {
+            throw new IllegalArgumentException("group содержит неподдерживаемые значения: "
+                    + String.join(", ", unsupportedGroups)
+                    + ". Поддерживаемые группы: "
+                    + String.join(", ", allowedGroups));
+        }
+        return java.util.Set.copyOf(normalized);
+    }
+
+    private boolean matchesPlaybookFilter(Map<String, Object> item,
+                                         java.util.Set<String> importanceFilter,
+                                         java.util.Set<String> groupFilter) {
+        String itemImportance = String.valueOf(item.get("importance"));
+        String itemGroup = String.valueOf(item.get("group"));
+        boolean importanceMatch = importanceFilter.isEmpty() || importanceFilter.contains(itemImportance);
+        boolean groupMatch = groupFilter.isEmpty()
+                || groupFilter.contains(itemGroup.toLowerCase(java.util.Locale.ROOT));
+        return importanceMatch && groupMatch;
+    }
+
+    private boolean matchesPlaybookQuery(Map<String, Object> item, String query) {
+        if (query == null) {
+            return true;
+        }
+        return List.of("title", "check", "api", "group", "importance").stream()
+                .map(item::get)
+                .filter(java.util.Objects::nonNull)
+                .map(value -> String.valueOf(value).toLowerCase(java.util.Locale.ROOT))
+                .anyMatch(value -> value.contains(query));
     }
 
     private Map<String, Object> playbookItem(int order,
