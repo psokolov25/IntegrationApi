@@ -65,6 +65,20 @@ public class VisitManagerBranchStateEventMapper {
         if (updatedBy == null || updatedBy.isBlank()) {
             updatedBy = event.source();
         }
+        String canonicalEventId = asString(first(payload,
+                "eventId",
+                "event_id",
+                "meta.eventId",
+                "meta.event_id",
+                "metadata.eventId",
+                "metadata.event_id",
+                "data.eventId",
+                "data.event_id",
+                "data.meta.eventId",
+                "data.meta.event_id"));
+        if (canonicalEventId == null || canonicalEventId.isBlank()) {
+            canonicalEventId = event.eventId();
+        }
         return new VisitManagerBranchStateEventPayload(
                 sourceVisitManagerId,
                 branchId,
@@ -72,7 +86,8 @@ public class VisitManagerBranchStateEventMapper {
                 activeWindow,
                 queueSize,
                 updatedAt,
-                updatedBy
+                updatedBy,
+                canonicalEventId
         );
     }
 
@@ -84,49 +99,27 @@ public class VisitManagerBranchStateEventMapper {
         if (payload == null) {
             throw new IllegalArgumentException("payload обязателен для VisitManager visit-event");
         }
-        String branchId = required(payload,
-                "branchId",
-                "branch_id",
-                "data.branchId",
-                "data.branch_id",
-                "data.branch.id",
-                "visit.branch.id",
-                "visit.branchId",
-                "visit.branch_id",
-                "data.visit.branch.id",
-                "data.visit.branchId",
-                "data.visit.branch_id",
-                "data.entities.*.visit.branch.id",
-                "data.entities.*.visit.branchId",
-                "data.entities.*.visit.branch_id");
-        String sourceVisitManagerId = asString(first(payload,
-                "meta.visitManagerId",
-                "meta.targetVisitManagerId",
-                "meta.target_visit_manager_id",
-                "metadata.visitManagerId",
-                "metadata.targetVisitManagerId",
-                "metadata.target_visit_manager_id",
-                "data.meta.visitManagerId",
-                "data.meta.targetVisitManagerId",
-                "data.meta.target_visit_manager_id",
-                "data.metadata.visitManagerId",
-                "data.metadata.targetVisitManagerId",
-                "data.metadata.target_visit_manager_id",
-                "data.visitManagerId",
-                "data.targetVisitManagerId",
-                "data.entities.*.meta.visitManagerId",
-                "data.entities.*.meta.targetVisitManagerId",
-                "data.entities.*.meta.target_visit_manager_id",
-                "visitManagerId",
-                "targetVisitManagerId",
-                "target_visit_manager_id"));
+        IntegrationGatewayConfiguration.VisitEventMappingSettings mapping = configuration.getEventing().getVisitEventMapping();
+        String branchId = required(payload, safePaths(mapping.getBranchIdPaths()));
+        String sourceVisitManagerId = asString(first(payload, safePaths(mapping.getVisitManagerIdPaths())));
         if (sourceVisitManagerId == null || sourceVisitManagerId.isBlank()) {
             sourceVisitManagerId = event.source();
         }
         if (sourceVisitManagerId == null || sourceVisitManagerId.isBlank()) {
             throw new IllegalArgumentException("visitManagerId обязателен (в payload или source события)");
         }
-        return new VisitManagerVisitEventPayload(sourceVisitManagerId, branchId, event.eventType());
+        Instant occurredAt = parseUpdatedAt(first(payload, safePaths(mapping.getOccurredAtPaths())), event.occurredAt());
+        String canonicalEventId = asString(first(payload, safePaths(mapping.getEventIdPaths())));
+        if (canonicalEventId == null || canonicalEventId.isBlank()) {
+            canonicalEventId = event.eventId();
+        }
+        return new VisitManagerVisitEventPayload(
+                sourceVisitManagerId,
+                branchId,
+                event.eventType(),
+                occurredAt,
+                canonicalEventId
+        );
     }
 
     /**
@@ -209,6 +202,20 @@ public class VisitManagerBranchStateEventMapper {
         if (updatedBy == null || updatedBy.isBlank()) {
             updatedBy = event.source();
         }
+        String canonicalEventId = asString(first(payload,
+                "eventId",
+                "event_id",
+                "meta.eventId",
+                "meta.event_id",
+                "metadata.eventId",
+                "metadata.event_id",
+                "data.eventId",
+                "data.event_id",
+                "data.meta.eventId",
+                "data.meta.event_id"));
+        if (canonicalEventId == null || canonicalEventId.isBlank()) {
+            canonicalEventId = event.eventId();
+        }
         return new VisitManagerBranchStateEventPayload(
                 sourceVisitManagerId,
                 branchId,
@@ -216,7 +223,8 @@ public class VisitManagerBranchStateEventMapper {
                 activeWindow,
                 queueSize,
                 updatedAt,
-                updatedBy
+                updatedBy,
+                canonicalEventId
         );
     }
 

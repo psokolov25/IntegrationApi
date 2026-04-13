@@ -2,6 +2,7 @@ package ru.aritmos.integration.client;
 
 import jakarta.inject.Singleton;
 import jakarta.inject.Named;
+import io.micronaut.context.annotation.Requires;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 import ru.aritmos.integration.domain.BranchStateDto;
 import ru.aritmos.integration.domain.BranchStateUpdateRequest;
@@ -20,6 +21,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Singleton
 @Named("rawVisitManagerClient")
+@Requires(property = "integration.visit-manager-client.mode", value = "STUB")
 public class StubVisitManagerClient implements VisitManagerClient {
 
     private final IntegrationGatewayConfiguration configuration;

@@ -59,8 +59,8 @@ public class VisitManagerVisitEventHandler implements EventHandler {
         cleanupStaleTracking();
         VisitManagerVisitEventPayload payload = mapper.mapVisitEvent(event);
         String key = payload.sourceVisitManagerId() + ":" + payload.branchId();
-        Instant eventTime = event.occurredAt() == null ? Instant.now(clock) : event.occurredAt();
-        String eventId = event.eventId() == null ? "" : event.eventId();
+        Instant eventTime = payload.occurredAt() == null ? Instant.now(clock) : payload.occurredAt();
+        String eventId = payload.canonicalEventId() == null ? "" : payload.canonicalEventId();
         TrackingState state = trackingByBranchTarget.get(key);
         if (state != null && !eventId.isBlank() && eventId.equals(state.lastEventId())) {
             return;

@@ -12,9 +12,14 @@ import ru.aritmos.integration.security.core.SecurityMode;
 import ru.aritmos.integration.service.RuntimeSafetyLimitService;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
 /**
  * Минимальный health endpoint этапа 1.
@@ -58,6 +63,7 @@ public class HealthController {
         components.put("security-mode", configuration.getSecurityMode().name());
         components.put("security", resolveSecurityStatus());
         components.put("eventing", eventingStatus);
+        components.put("visit-manager-client", resolveVisitManagerClientStatus());
         components.put("gateway", resolveGatewayStatus());
         components.put("federation", resolveFederationStatus());
         components.put("aggregation", resolveAggregationStatus());
@@ -85,11 +91,50 @@ public class HealthController {
         long active = configuration.getVisitManagers().stream()
                 .filter(IntegrationGatewayConfiguration.VisitManagerInstance::isActive)
                 .count();
-        return active > 0 ? "UP" : "DEGRADED";
+        if (active == 0) {
+            return "DEGRADED";
+        }
+        boolean allActiveConfigured = configuration.getVisitManagers().stream()
+                .filter(IntegrationGatewayConfiguration.VisitManagerInstance::isActive)
+                .allMatch(this::isVisitManagerEndpointConfigured);
+        return allActiveConfigured ? "UP" : "DOWN";
     }
 
     private String resolveFederationStatus() {
         return configuration.getVisitManagers().size() > 1 ? "ENABLED" : "DISABLED";
+    }
+
+    private String resolveVisitManagerClientStatus() {
+        IntegrationGatewayConfiguration.VisitManagerClientSettings settings = configuration.getVisitManagerClient();
+        String mode = settings.getMode() == null ? "HTTP" : settings.getMode().trim().toUpperCase();
+        if ("STUB".equals(mode)) {
+            return "DOWN";
+        }
+        if (!"HTTP".equals(mode)) {
+            return "DOWN";
+        }
+        boolean hasActive = configuration.getVisitManagers().stream()
+                .anyMatch(IntegrationGatewayConfiguration.VisitManagerInstance::isActive);
+        if (!hasActive) {
+            return "DEGRADED";
+        }
+        boolean allActiveConfigured = configuration.getVisitManagers().stream()
+                .filter(IntegrationGatewayConfiguration.VisitManagerInstance::isActive)
+                .allMatch(this::isVisitManagerEndpointConfigured);
+        if (!allActiveConfigured) {
+            return "DOWN";
+        }
+        boolean templatesValid = hasPlaceholder(settings.getQueuesPathTemplate(), "{branchId}")
+                && hasPlaceholder(settings.getCallPathTemplate(), "{branchId}")
+                && hasPlaceholder(settings.getCallPathTemplate(), "{visitorId}")
+                && hasPlaceholder(settings.getBranchStatePathTemplate(), "{branchId}");
+        if (!templatesValid) {
+            return "DOWN";
+        }
+        if (settings.isReadinessProbeEnabled() && !probeVisitManagers(settings)) {
+            return "DEGRADED";
+        }
+        return "UP";
     }
 
 
@@ -156,5 +201,69 @@ public class HealthController {
                 .anyMatch(state -> "DOWN".equalsIgnoreCase(state) || "DEGRADED".equalsIgnoreCase(state))
                 ? "DEGRADED"
                 : "UP";
+    }
+
+    private boolean hasPlaceholder(String template, String placeholder) {
+        return template != null && template.contains(placeholder);
+    }
+
+    private boolean isVisitManagerEndpointConfigured(IntegrationGatewayConfiguration.VisitManagerInstance vm) {
+        return vm.getId() != null && !vm.getId().isBlank()
+                && vm.getBaseUrl() != null && !vm.getBaseUrl().isBlank();
+    }
+
+    private boolean probeVisitManagers(IntegrationGatewayConfiguration.VisitManagerClientSettings settings) {
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.max(1, settings.getReadTimeoutMillis())))
+                .build();
+        String probePath = normalizeProbePath(settings.getReadinessProbePath());
+        return configuration.getVisitManagers().stream()
+                .filter(IntegrationGatewayConfiguration.VisitManagerInstance::isActive)
+                .allMatch(vm -> probeSingleVisitManager(client, vm, probePath, settings));
+    }
+
+    private boolean probeSingleVisitManager(HttpClient client,
+                                            IntegrationGatewayConfiguration.VisitManagerInstance vm,
+                                            String probePath,
+                                            IntegrationGatewayConfiguration.VisitManagerClientSettings settings) {
+        try {
+            String baseUrl = vm.getBaseUrl();
+            if (baseUrl == null || baseUrl.isBlank()) {
+                return false;
+            }
+            String normalizedBase = baseUrl.endsWith("/")
+                    ? baseUrl.substring(0, baseUrl.length() - 1)
+                    : baseUrl;
+            HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                    .uri(URI.create(normalizedBase + probePath))
+                    .timeout(Duration.ofMillis(Math.max(1, settings.getReadTimeoutMillis())))
+                    .GET();
+            applyProbeAuthorization(requestBuilder, settings);
+            HttpResponse<Void> response = client.send(requestBuilder.build(), HttpResponse.BodyHandlers.discarding());
+            return response.statusCode() >= 200 && response.statusCode() < 300;
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    private String normalizeProbePath(String path) {
+        if (path == null || path.isBlank()) {
+            return "/health/readiness";
+        }
+        return path.startsWith("/") ? path : "/" + path;
+    }
+
+    private void applyProbeAuthorization(HttpRequest.Builder requestBuilder,
+                                         IntegrationGatewayConfiguration.VisitManagerClientSettings settings) {
+        if (settings.getAuthToken() == null || settings.getAuthToken().isBlank()) {
+            return;
+        }
+        String authHeader = settings.getAuthHeader() == null || settings.getAuthHeader().isBlank()
+                ? "Authorization"
+                : settings.getAuthHeader();
+        requestBuilder.header(authHeader, settings.getAuthToken());
     }
 }

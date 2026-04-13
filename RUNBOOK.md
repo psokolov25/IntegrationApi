@@ -3,7 +3,11 @@
 ## Playbook (операционный порядок)
 1. Проверить доступность сервиса (`/health`, `/health/readiness`).
 2. Проверить конфигурацию интеграции с VisitManager:
-   - `integration.visit-managers[*].base-url`;
+   - `integration.visit-managers[*].base-url` (для `active=true` обязательно непустое значение);
+   - `integration.visit-manager-client.mode` (`HTTP` для рабочего контура; `STUB` допускается только в локальных тестах и в readiness считается `DOWN`) и для `HTTP`: `read-timeout-millis`, `auth-header`, `auth-token`, `*-path-template`, `readiness-probe-enabled`, `readiness-probe-path` (probe использует тот же auth-заголовок/токен);
+   - убедиться, что branch-state downstream возвращает канонические поля `branchId`, `sourceVisitManagerId`, `updatedAt` (без fallback на стороне integration-api).
+   - при изменениях структуры branch-state в VisitManager перенастроить `integration.visit-manager-client.branch-state-response-mapping.*` (без рекомпиляции сервиса).
+   - при изменениях структуры VISIT_* payload перенастроить `integration.eventing.visit-event-mapping.*` (без рекомпиляции сервиса).
    - `integration.branch-routing` и `integration.branch-fallback-routing`;
    - `integration.branch-state-cache-ttl`, `integration.branch-state-event-refresh-debounce`;
    - `integration.aggregate-max-branches` (лимит количества **уникальных** `branchIds` после нормализации в `GET /api/v1/queues/aggregate`);
@@ -26,7 +30,7 @@
 - Health: `GET /health`
 - Liveness: `GET /health/liveness`
 - Readiness: `GET /health/readiness`
-- `GET /health/readiness` возвращает компоненты по ключевым группам (`gateway`, `federation`, `aggregation`, `eventing`, `security-mode`, `security`, `programmable-api`, `client-policy`, `observability`); `security` отражает корректность конфигурации режима безопасности (например, `API_KEY` без ключей -> `DOWN`, `HYBRID` без API keys и keycloak issuer -> `DEGRADED`).
+- `GET /health/readiness` возвращает компоненты по ключевым группам (`gateway`, `visit-manager-client`, `federation`, `aggregation`, `eventing`, `security-mode`, `security`, `programmable-api`, `client-policy`, `observability`); `security` отражает корректность конфигурации режима безопасности (например, `API_KEY` без ключей -> `DOWN`, `HYBRID` без API keys и keycloak issuer -> `DEGRADED`).
 - `GET /health/readiness` дополнительно содержит `runtime-safety`:
   - `UP` — аппаратных ограничений не потребовалось;
   - `DEGRADED` — для защиты от подвисания и перегрузки соседних служб автоматически снижены runtime-лимиты.
@@ -167,11 +171,13 @@
 - Для `*-paths` и `queue-snapshot-roots` поддерживается wildcard-сегмент `*` (пример: `payload.records.*.after_state.id`) для поиска по массивам/словарям с динамическими ключами.
 - Branch-state «скачет назад»: проверить out-of-order события и `updatedAt` в payload.
 - При одинаковом `updatedAt` кэш branch-state сохраняет уже примененное состояние (второй апдейт игнорируется), поэтому для детерминированной синхронизации источнику нужно передавать монотонный `updatedAt` на каждое изменение.
+- Для `branch-state-updated`/`ENTITY_CHANGED` повторная доставка одного и того же `eventId` игнорируется handler-уровнем (используется `payload.eventId` fallback, затем envelope `eventId`); при диагностике дублей сверять стабильность идентификатора на стороне источника/шины.
 - Для `VISIT_*` убедиться, что `occurredAt` монотонно возрастает в рамках пары `visitManagerId + branchId`; более старые события должны игнорироваться.
 - Для `VISIT_*` дубликаты определяются по `eventId` (inbox idempotency + handler-трекинг): повторная доставка того же `eventId` игнорируется, даже если `occurredAt` отличается.
 - Для `VISIT_*` события с одинаковым `occurredAt`, но разными `eventId`, считаются независимыми и должны обрабатываться (при условии вне debounce-окна).
 - Для `VISIT_*` debounce/out-of-order трекинг очищает устаревшие ключи автоматически (retention = `max(1 минута, debounce * 10)`); при редких событиях по филиалу после паузы это штатное поведение и не требует ручной очистки.
 - Для `VISIT_*` поддерживаются как плоские поля (`branchId`, `visitManagerId`), так и вложенные варианты (`data.branch.id`, `data.visit.branch.id`, `data.entities[*].visit.branch.id`, `data.meta.visitManagerId`, snake_case), поэтому при интеграции с DataBus проверять фактическую вложенность `meta/data/...`.
+- Для `VISIT_*`, если envelope не содержит `eventId/occurredAt`, handler использует fallback из payload (`eventId`, `data.visit.eventId`, `visit.eventId`, `occurredAt`, `data.meta.occurredAt`, `data.visit.occurredAt`, `timestamp`) — это критично для корректного dedupe и out-of-order контроля при проксировании через внешние шины.
 - Для `branch-state-updated`/`ENTITY_CHANGED` поле `updatedAt` можно передавать как ISO-8601, так и epoch (`seconds`/`millis`); при нестабильном формате времени на стороне источника рекомендуется унифицировать его до ISO-8601.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
 - Для точечного восстановления обработать событие через `POST /api/v1/events/replay-dlq/{eventId}`.

@@ -175,8 +175,8 @@ public class GatewayService {
         return updated;
     }
 
-    public void applyEventBranchState(BranchStateDto state) {
-        branchStateCache.putIfNewer(state);
+    public boolean applyEventBranchState(BranchStateDto state) {
+        return branchStateCache.putIfNewer(state);
     }
 
     public List<BranchStateDto> branchStateSnapshot() {
