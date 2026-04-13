@@ -113,7 +113,6 @@
   "studioLoadBootstrap": "Load studio bootstrap",
   "studioLoadSettings": "Load editor settings",
   "studioLoadCapabilities": "Load capabilities",
-  "studioLoadPlaybook": "Load playbook",
   "studioLoadOperationsCatalog": "Load operations catalog",
   "studioSaveSettings": "Save editor settings",
   "studioRunOperation": "Run operation",

@@ -627,57 +627,6 @@ public class ProgrammableController {
         return result;
     }
 
-    @Get("/studio/playbook")
-    @Operation(summary = "Playbook programmable-студии",
-            description = "Пошаговый операционный playbook с акцентом на основные задачи интеграции СУО с внешними службами заказчика "
-                    + "(connectors health, routing, queue smoke, branch-state sync, external REST/message bus). "
-                    + "Поддерживает сортировку по важности (sortBy=importance, по умолчанию), исходному порядку (sortBy=order) "
-                    + "или по группе (sortBy=group), а также направление сортировки (sortOrder=asc|desc), "
-                    + "а также фильтрацию по важности (importance=HIGH|MEDIUM|LOW, можно несколько через запятую) "
-                    + "и группе (group=..., можно несколько через запятую), полнотекстовый поиск q=..., "
-                    + "пагинацию limit=1..200 и offset=0..10000. "
-                    + "Для некорректных filter-значений возвращает ошибку валидации.")
-    public List<Map<String, Object>> studioPlaybook(HttpRequest<?> request,
-                                                    @QueryValue(defaultValue = "importance") String sortBy,
-                                                    @QueryValue(defaultValue = "asc") String sortOrder,
-                                                    @QueryValue(defaultValue = "") String importance,
-                                                    @QueryValue(defaultValue = "") String group,
-                                                    @QueryValue(defaultValue = "") String q,
-                                                    @QueryValue(defaultValue = "50") Integer limit,
-                                                    @QueryValue(defaultValue = "0") Integer offset) {
-        var subject = RequestSecurityContext.current(request)
-                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
-        authorizationService.requirePermission(subject, "programmable-script-execute");
-        return studioWorkspaceService.buildPlaybook(sortBy, importance, group, sortOrder, q, limit, offset);
-    }
-
-    @Get("/studio/playbook/page")
-    @Operation(summary = "Playbook programmable-студии с метаданными пагинации",
-            description = "Возвращает отфильтрованный playbook и метаданные пагинации: total/limit/offset/hasMore.")
-    public Map<String, Object> studioPlaybookPage(HttpRequest<?> request,
-                                                  @QueryValue(defaultValue = "importance") String sortBy,
-                                                  @QueryValue(defaultValue = "asc") String sortOrder,
-                                                  @QueryValue(defaultValue = "") String importance,
-                                                  @QueryValue(defaultValue = "") String group,
-                                                  @QueryValue(defaultValue = "") String q,
-                                                  @QueryValue(defaultValue = "50") Integer limit,
-                                                  @QueryValue(defaultValue = "0") Integer offset) {
-        var subject = RequestSecurityContext.current(request)
-                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
-        authorizationService.requirePermission(subject, "programmable-script-execute");
-        return studioWorkspaceService.buildPlaybookPage(sortBy, importance, group, sortOrder, q, limit, offset);
-    }
-
-    @Get("/studio/playbook/options")
-    @Operation(summary = "Опции фильтрации/sort для studio playbook",
-            description = "Возвращает поддерживаемые значения sortBy/sortOrder/importance/group для GUI форм.")
-    public Map<String, Object> studioPlaybookOptions(HttpRequest<?> request) {
-        var subject = RequestSecurityContext.current(request)
-                .orElseThrow(() -> new SecurityException("Субъект не аутентифицирован"));
-        authorizationService.requirePermission(subject, "programmable-script-execute");
-        return studioWorkspaceService.playbookOptions();
-    }
-
     @Get("/studio/operations/catalog")
     @Operation(summary = "Каталог studio operations",
             description = "Возвращает поддерживаемые operation-коды и шаблоны параметров для GUI.")

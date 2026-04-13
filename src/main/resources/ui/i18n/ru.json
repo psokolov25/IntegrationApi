@@ -113,7 +113,6 @@
   "studioLoadBootstrap": "Загрузить studio bootstrap",
   "studioLoadSettings": "Загрузить editor settings",
   "studioLoadCapabilities": "Загрузить capabilities",
-  "studioLoadPlaybook": "Загрузить playbook",
   "studioLoadOperationsCatalog": "Загрузить operations catalog",
   "studioSaveSettings": "Сохранить editor settings",
   "studioRunOperation": "Выполнить operation",

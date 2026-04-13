@@ -1038,12 +1038,6 @@ async function saveStudioSettings() {
     setStatus("Studio settings сохранены");
 }
 
-async function loadStudioPlaybook() {
-    const result = await apiGet("/api/v1/program/studio/playbook");
-    el("studioPlaybookView").textContent = JSON.stringify(result, null, 2);
-    setStatus("Studio playbook загружен");
-}
-
 function renderStudioOperationCatalog() {
     const select = el("studioOperationInput");
     if (!select) {
@@ -1189,7 +1183,6 @@ function init() {
     el("loadStudioSettingsBtn").onclick = () => loadStudioSettings().catch(e => setStatus(`Ошибка studio settings: ${e.message}`));
     el("loadStudioCapabilitiesBtn").onclick = () => loadStudioCapabilities().catch(e => setStatus(`Ошибка studio capabilities: ${e.message}`));
     el("saveStudioSettingsBtn").onclick = () => saveStudioSettings().catch(e => setStatus(`Ошибка save studio settings: ${e.message}`));
-    el("loadStudioPlaybookBtn").onclick = () => loadStudioPlaybook().catch(e => setStatus(`Ошибка studio playbook: ${e.message}`));
     el("loadStudioOpsCatalogBtn").onclick = () => loadStudioOperationsCatalog().catch(e => setStatus(`Ошибка studio operations catalog: ${e.message}`));
     el("runStudioOperationBtn").onclick = () => runStudioOperation().catch(e => setStatus(`Ошибка studio operation: ${e.message}`));
     el("studioOperationInput").onchange = () => applyStudioOperationTemplate();
