@@ -99,6 +99,14 @@ mvn exec:java
   - на старте сервис оценивает доступные CPU/RAM среды и при дефиците автоматически снижает рискованные лимиты (`aggregate-max-branches`, `aggregate-request-timeout-millis`, `eventing.max-payload-fields`, `eventing.outbox-auto-flush-batch-size`);
   - статус защиты отражается в `GET /health/readiness` компонентом `runtime-safety` (`UP`/`DEGRADED`).
 - Локальный каталог кэшей/инструментария: `cache/` (не коммитится, бинарные артефакты/браузеры/кэш npm).
+- Режим downstream клиента VisitManager:
+  - `integration.visit-manager-client.mode=HTTP` — прямые REST-вызовы в VisitManager (`/api/v1/queues/*`, `/api/v1/branches/*/state`) и режим по умолчанию;
+  - `integration.visit-manager-client.mode=STUB` — только для локальных тестов; в readiness такой режим помечается как `DOWN` и не считается рабочим для нового продукта;
+  - для HTTP режима доступны параметры `read-timeout-millis`, `auth-header`, `auth-token` и path templates (`queues-path-template`, `call-path-template`, `branch-state-path-template`) для выравнивания с контрактом конкретной инсталляции VisitManager;
+  - в HTTP режиме ответ branch-state считается валидным только при наличии канонических полей `branchId`, `sourceVisitManagerId`, `updatedAt` (без legacy-fallback).
+  - для адаптации к будущим изменениям структуры branch-state без рекомпиляции доступен runtime-мэппинг `branch-state-response-mapping.*` (json-path для `branchId/sourceVisitManagerId/status/activeWindow/queueSize/updatedAt/updatedBy`).
+  - для адаптации структуры VISIT_* событий без рекомпиляции доступен runtime-мэппинг `integration.eventing.visit-event-mapping.*` (`branch-id-paths`, `visit-manager-id-paths`, `occurred-at-paths`, `event-id-paths`).
+  - опциональный live-probe доступности VM в readiness: `readiness-probe-enabled` + `readiness-probe-path` (probe использует те же `auth-header`/`auth-token`, что и основной HTTP-клиент).
 - Формат ITS: ZIP-архив с расширением `.its`, содержащий `template.yml` (`template/parameters/scripts`) и `scripts/*.groovy`.
 - При импорте можно получить структуру параметров из `template.yml`, заполнить значения через GUI и выполнить подстановку `{{paramKey}}` в скриптах.
 - Генерация YAML + проверка кириллицы + PDF:
@@ -117,7 +125,7 @@ mvn exec:java
 
 ## Ограничения текущего состояния
 - Eventing слой пока in-memory (без Kafka consumer group и persistent inbox/outbox);
-- VisitManager downstream пока stub;
+- Рабочий режим downstream VisitManager для продукта — `HTTP` (режим `STUB` оставлен только для локальных тестов).
 - production-hardening еще впереди.
 - Error contract стандартизован, но пока без централизованной external observability sink.
 

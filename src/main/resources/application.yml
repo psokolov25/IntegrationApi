@@ -124,11 +124,34 @@ integration:
       updated-at-paths: ["data.state.updatedAt", "data.updatedAt", "data.entity.state.updatedAt", "data.entity.updatedAt", "updatedAt", "updated_at"]
       updated-by-paths: ["data.state.updatedBy", "data.updatedBy", "data.entity.state.updatedBy", "data.entity.updatedBy", "updatedBy", "updated_by"]
       visit-manager-id-paths: ["meta.visitManagerId", "meta.targetVisitManagerId", "metadata.visitManagerId", "metadata.targetVisitManagerId", "data.meta.visitManagerId", "data.meta.targetVisitManagerId", "data.visitManagerId", "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"]
+    visit-event-mapping:
+      branch-id-paths: ["visit.branchId", "visit.branch.id", "data.visit.branchId", "data.visit.branch.id"]
+      visit-manager-id-paths: ["meta.visitManagerId", "data.meta.visitManagerId", "visitManagerId"]
+      occurred-at-paths: ["visit.occurredAt", "data.visit.occurredAt", "meta.occurredAt", "data.meta.occurredAt", "occurredAt"]
+      event-id-paths: ["visit.eventId", "data.visit.eventId", "meta.eventId", "data.meta.eventId", "eventId"]
   queue-cache-ttl: 30s
   aggregate-max-branches: 200
   aggregate-request-timeout-millis: 3000
   branch-state-cache-ttl: 15s
   branch-state-event-refresh-debounce: 2s
+  visit-manager-client:
+    mode: HTTP # Рабочий режим: HTTP. STUB — только для локальных тестов (readiness=DOWN).
+    read-timeout-millis: 3000
+    auth-header: Authorization
+    auth-token: ""
+    queues-path-template: /api/v1/queues/{branchId}
+    call-path-template: /api/v1/queues/{branchId}/call/{visitorId}
+    branch-state-path-template: /api/v1/branches/{branchId}/state
+    branch-state-response-mapping:
+      branch-id-path: branchId
+      source-visit-manager-id-path: sourceVisitManagerId
+      status-path: status
+      active-window-path: activeWindow
+      queue-size-path: queueSize
+      updated-at-path: updatedAt
+      updated-by-path: updatedBy
+    readiness-probe-enabled: false
+    readiness-probe-path: /health/readiness
   visit-managers:
     - id: vm-main
       base-url: http://localhost:8081

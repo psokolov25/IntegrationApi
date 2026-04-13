@@ -51,6 +51,7 @@ public class IntegrationGatewayConfiguration {
     private Duration branchStateEventRefreshDebounce = Duration.ofSeconds(2);
 
     private List<VisitManagerInstance> visitManagers = new ArrayList<>();
+    private VisitManagerClientSettings visitManagerClient = new VisitManagerClientSettings();
 
     private Map<String, String> branchRouting = new HashMap<>();
 
@@ -192,6 +193,14 @@ public class IntegrationGatewayConfiguration {
         this.visitManagers = visitManagers;
     }
 
+    public VisitManagerClientSettings getVisitManagerClient() {
+        return visitManagerClient;
+    }
+
+    public void setVisitManagerClient(VisitManagerClientSettings visitManagerClient) {
+        this.visitManagerClient = visitManagerClient;
+    }
+
     public Map<String, String> getBranchRouting() {
         return branchRouting;
     }
@@ -240,6 +249,7 @@ public class IntegrationGatewayConfiguration {
         private KafkaSettings kafka = new KafkaSettings();
         private EventWebhookSettings webhook = new EventWebhookSettings();
         private EntityChangedBranchMappingSettings entityChangedBranchMapping = new EntityChangedBranchMappingSettings();
+        private VisitEventMappingSettings visitEventMapping = new VisitEventMappingSettings();
 
         public boolean isEnabled() {
             return enabled;
@@ -415,6 +425,14 @@ public class IntegrationGatewayConfiguration {
 
         public void setEntityChangedBranchMapping(EntityChangedBranchMappingSettings entityChangedBranchMapping) {
             this.entityChangedBranchMapping = entityChangedBranchMapping;
+        }
+
+        public VisitEventMappingSettings getVisitEventMapping() {
+            return visitEventMapping;
+        }
+
+        public void setVisitEventMapping(VisitEventMappingSettings visitEventMapping) {
+            this.visitEventMapping = visitEventMapping;
         }
     }
 
@@ -703,6 +721,67 @@ public class IntegrationGatewayConfiguration {
 
         public void setVisitsKeys(List<String> visitsKeys) {
             this.visitsKeys = visitsKeys;
+        }
+    }
+
+    @Introspected
+    public static class VisitEventMappingSettings {
+        private List<String> branchIdPaths = List.of(
+                "visit.branchId",
+                "visit.branch.id",
+                "data.visit.branchId",
+                "data.visit.branch.id"
+        );
+        private List<String> visitManagerIdPaths = List.of(
+                "meta.visitManagerId",
+                "data.meta.visitManagerId",
+                "visitManagerId"
+        );
+        private List<String> occurredAtPaths = List.of(
+                "visit.occurredAt",
+                "data.visit.occurredAt",
+                "meta.occurredAt",
+                "data.meta.occurredAt",
+                "occurredAt"
+        );
+        private List<String> eventIdPaths = List.of(
+                "visit.eventId",
+                "data.visit.eventId",
+                "meta.eventId",
+                "data.meta.eventId",
+                "eventId"
+        );
+
+        public List<String> getBranchIdPaths() {
+            return branchIdPaths;
+        }
+
+        public void setBranchIdPaths(List<String> branchIdPaths) {
+            this.branchIdPaths = branchIdPaths;
+        }
+
+        public List<String> getVisitManagerIdPaths() {
+            return visitManagerIdPaths;
+        }
+
+        public void setVisitManagerIdPaths(List<String> visitManagerIdPaths) {
+            this.visitManagerIdPaths = visitManagerIdPaths;
+        }
+
+        public List<String> getOccurredAtPaths() {
+            return occurredAtPaths;
+        }
+
+        public void setOccurredAtPaths(List<String> occurredAtPaths) {
+            this.occurredAtPaths = occurredAtPaths;
+        }
+
+        public List<String> getEventIdPaths() {
+            return eventIdPaths;
+        }
+
+        public void setEventIdPaths(List<String> eventIdPaths) {
+            this.eventIdPaths = eventIdPaths;
         }
     }
 
@@ -1338,6 +1417,218 @@ public class IntegrationGatewayConfiguration {
 
         public void setActive(boolean active) {
             this.active = active;
+        }
+    }
+
+    @Introspected
+    public static class VisitManagerClientSettings {
+        /**
+         * Режим downstream клиента: HTTP (по умолчанию) или STUB.
+         */
+        private String mode = "HTTP";
+        /**
+         * Таймаут HTTP-запроса к VisitManager (мс).
+         */
+        private long readTimeoutMillis = 3000;
+        /**
+         * Имя auth-заголовка для downstream вызовов (например, Authorization).
+         */
+        private String authHeader = "Authorization";
+        /**
+         * Токен auth-заголовка для downstream вызовов.
+         */
+        private String authToken = "";
+        /**
+         * Путь (template) для получения очередей.
+         */
+        private String queuesPathTemplate = "/api/v1/queues/{branchId}";
+        /**
+         * Путь (template) для вызова посетителя.
+         */
+        private String callPathTemplate = "/api/v1/queues/{branchId}/call/{visitorId}";
+        /**
+         * Путь (template) для чтения/изменения branch-state.
+         */
+        private String branchStatePathTemplate = "/api/v1/branches/{branchId}/state";
+        /**
+         * Включить live-probe доступности VisitManager в `/health/readiness`.
+         */
+        private boolean readinessProbeEnabled = false;
+        /**
+         * Путь probe endpoint в VisitManager для readiness проверки.
+         */
+        private String readinessProbePath = "/health/readiness";
+        /**
+         * Runtime-настройки маппинга полей branch-state ответа (без рекомпиляции).
+         */
+        private BranchStateResponseMappingSettings branchStateResponseMapping = new BranchStateResponseMappingSettings();
+
+        public String getMode() {
+            return mode;
+        }
+
+        public void setMode(String mode) {
+            this.mode = mode;
+        }
+
+        public long getReadTimeoutMillis() {
+            return readTimeoutMillis;
+        }
+
+        public void setReadTimeoutMillis(long readTimeoutMillis) {
+            this.readTimeoutMillis = readTimeoutMillis;
+        }
+
+        public String getAuthHeader() {
+            return authHeader;
+        }
+
+        public void setAuthHeader(String authHeader) {
+            this.authHeader = authHeader;
+        }
+
+        public String getAuthToken() {
+            return authToken;
+        }
+
+        public void setAuthToken(String authToken) {
+            this.authToken = authToken;
+        }
+
+        public String getQueuesPathTemplate() {
+            return queuesPathTemplate;
+        }
+
+        public void setQueuesPathTemplate(String queuesPathTemplate) {
+            this.queuesPathTemplate = queuesPathTemplate;
+        }
+
+        public String getCallPathTemplate() {
+            return callPathTemplate;
+        }
+
+        public void setCallPathTemplate(String callPathTemplate) {
+            this.callPathTemplate = callPathTemplate;
+        }
+
+        public String getBranchStatePathTemplate() {
+            return branchStatePathTemplate;
+        }
+
+        public void setBranchStatePathTemplate(String branchStatePathTemplate) {
+            this.branchStatePathTemplate = branchStatePathTemplate;
+        }
+
+        public boolean isReadinessProbeEnabled() {
+            return readinessProbeEnabled;
+        }
+
+        public void setReadinessProbeEnabled(boolean readinessProbeEnabled) {
+            this.readinessProbeEnabled = readinessProbeEnabled;
+        }
+
+        public String getReadinessProbePath() {
+            return readinessProbePath;
+        }
+
+        public void setReadinessProbePath(String readinessProbePath) {
+            this.readinessProbePath = readinessProbePath;
+        }
+
+        public BranchStateResponseMappingSettings getBranchStateResponseMapping() {
+            return branchStateResponseMapping;
+        }
+
+        public void setBranchStateResponseMapping(BranchStateResponseMappingSettings branchStateResponseMapping) {
+            this.branchStateResponseMapping = branchStateResponseMapping;
+        }
+    }
+
+    @Introspected
+    public static class BranchStateResponseMappingSettings {
+        /**
+         * Json-path поля branchId в ответе branch-state.
+         */
+        private String branchIdPath = "branchId";
+        /**
+         * Json-path поля sourceVisitManagerId в ответе branch-state.
+         */
+        private String sourceVisitManagerIdPath = "sourceVisitManagerId";
+        /**
+         * Json-path поля status в ответе branch-state.
+         */
+        private String statusPath = "status";
+        /**
+         * Json-path поля activeWindow в ответе branch-state.
+         */
+        private String activeWindowPath = "activeWindow";
+        /**
+         * Json-path поля queueSize в ответе branch-state.
+         */
+        private String queueSizePath = "queueSize";
+        /**
+         * Json-path поля updatedAt в ответе branch-state.
+         */
+        private String updatedAtPath = "updatedAt";
+        /**
+         * Json-path поля updatedBy в ответе branch-state.
+         */
+        private String updatedByPath = "updatedBy";
+
+        public String getBranchIdPath() {
+            return branchIdPath;
+        }
+
+        public void setBranchIdPath(String branchIdPath) {
+            this.branchIdPath = branchIdPath;
+        }
+
+        public String getSourceVisitManagerIdPath() {
+            return sourceVisitManagerIdPath;
+        }
+
+        public void setSourceVisitManagerIdPath(String sourceVisitManagerIdPath) {
+            this.sourceVisitManagerIdPath = sourceVisitManagerIdPath;
+        }
+
+        public String getStatusPath() {
+            return statusPath;
+        }
+
+        public void setStatusPath(String statusPath) {
+            this.statusPath = statusPath;
+        }
+
+        public String getActiveWindowPath() {
+            return activeWindowPath;
+        }
+
+        public void setActiveWindowPath(String activeWindowPath) {
+            this.activeWindowPath = activeWindowPath;
+        }
+
+        public String getQueueSizePath() {
+            return queueSizePath;
+        }
+
+        public void setQueueSizePath(String queueSizePath) {
+            this.queueSizePath = queueSizePath;
+        }
+
+        public String getUpdatedAtPath() {
+            return updatedAtPath;
+        }
+
+        public void setUpdatedAtPath(String updatedAtPath) {
+            this.updatedAtPath = updatedAtPath;
+        }
+
+        public String getUpdatedByPath() {
+            return updatedByPath;
+        }
+
+        public void setUpdatedByPath(String updatedByPath) {
+            this.updatedByPath = updatedByPath;
         }
     }
 }

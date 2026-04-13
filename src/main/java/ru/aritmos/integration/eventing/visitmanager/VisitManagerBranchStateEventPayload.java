@@ -15,6 +15,7 @@ public record VisitManagerBranchStateEventPayload(
         String activeWindow,
         int queueSize,
         Instant updatedAt,
-        String updatedBy
+        String updatedBy,
+        String canonicalEventId
 ) {
 }

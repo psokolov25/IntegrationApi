@@ -46,6 +46,7 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals("BR-100", payload.branchId());
         Assertions.assertEquals("PAUSED", payload.status());
         Assertions.assertEquals(4, payload.queueSize());
+        Assertions.assertEquals("evt-vm-1", payload.canonicalEventId());
     }
 
     @Test
@@ -136,18 +137,22 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals("vm-main", payload.sourceVisitManagerId());
         Assertions.assertEquals("BR-201", payload.branchId());
         Assertions.assertEquals("VISIT_CALLED", payload.visitEventType());
+        Assertions.assertEquals(Instant.parse("2026-02-01T11:06:00Z"), payload.occurredAt());
+        Assertions.assertEquals("evt-vm-3", payload.canonicalEventId());
     }
 
     @Test
-    void shouldMapVisitLifecycleEventPayloadWithMetadataTargetVisitManagerId() {
+    void shouldMapVisitLifecycleEventPayloadWithConfiguredCanonicalPaths() {
         IntegrationEvent event = new IntegrationEvent(
                 "evt-vm-3c",
                 "VISIT_COMPLETED",
                 "vm-source-fallback",
                 Instant.parse("2026-02-01T11:07:00Z"),
                 Map.of(
-                        "data", Map.of("branch", Map.of("id", "BR-202")),
-                        "metadata", Map.of("targetVisitManagerId", "vm-metadata-main")
+                        "data", Map.of(
+                                "visit", Map.of("branch", Map.of("id", "BR-202")),
+                                "meta", Map.of("visitManagerId", "vm-metadata-main")
+                        )
                 )
         );
 
@@ -155,10 +160,16 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals("vm-metadata-main", payload.sourceVisitManagerId());
         Assertions.assertEquals("BR-202", payload.branchId());
         Assertions.assertEquals("VISIT_COMPLETED", payload.visitEventType());
+        Assertions.assertEquals("evt-vm-3c", payload.canonicalEventId());
     }
 
     @Test
     void shouldMapVisitLifecycleEventFromNestedEntitiesWithBranchObject() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().getVisitEventMapping().setBranchIdPaths(List.of("data.entities.*.visit.branch.id"));
+        cfg.getEventing().getVisitEventMapping().setVisitManagerIdPaths(List.of("data.entities.*.meta.target_visit_manager_id"));
+        VisitManagerBranchStateEventMapper configurableMapper = new VisitManagerBranchStateEventMapper(cfg);
+
         IntegrationEvent event = new IntegrationEvent(
                 "evt-vm-3b",
                 "VISIT_REDIRECTED",
@@ -178,10 +189,36 @@ class VisitManagerBranchStateEventMapperTest {
                 )
         );
 
-        VisitManagerVisitEventPayload payload = mapper.mapVisitEvent(event);
+        VisitManagerVisitEventPayload payload = configurableMapper.mapVisitEvent(event);
         Assertions.assertEquals("vm-nested", payload.sourceVisitManagerId());
         Assertions.assertEquals("BR-ENTITY-901", payload.branchId());
         Assertions.assertEquals("VISIT_REDIRECTED", payload.visitEventType());
+    }
+
+    @Test
+    void shouldExtractVisitEventIdentityAndOccurredAtFromPayloadFallback() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-envelope-ignored",
+                "VISIT_CREATED",
+                "vm-source-fallback",
+                null,
+                Map.of(
+                        "data", Map.of(
+                                "visit", Map.of(
+                                        "branch", Map.of("id", "BR-ENTITY-902"),
+                                        "eventId", "evt-canonical-902",
+                                        "occurredAt", "2026-04-10T10:15:30Z"
+                                ),
+                                "meta", Map.of("visitManagerId", "vm-main")
+                        )
+                )
+        );
+
+        VisitManagerVisitEventPayload payload = mapper.mapVisitEvent(event);
+        Assertions.assertEquals("vm-main", payload.sourceVisitManagerId());
+        Assertions.assertEquals("BR-ENTITY-902", payload.branchId());
+        Assertions.assertEquals("evt-canonical-902", payload.canonicalEventId());
+        Assertions.assertEquals(Instant.parse("2026-04-10T10:15:30Z"), payload.occurredAt());
     }
 
     @Test
@@ -213,6 +250,28 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals("BR-301", payload.branchId());
         Assertions.assertEquals("OPEN", payload.status());
         Assertions.assertEquals(7, payload.queueSize());
+        Assertions.assertEquals("evt-vm-4", payload.canonicalEventId());
+    }
+
+    @Test
+    void shouldExtractBranchStateCanonicalEventIdFromPayloadWhenEnvelopeChanges() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-envelope-branch",
+                "branch-state-updated",
+                "vm-main",
+                Instant.parse("2026-04-13T11:00:00Z"),
+                Map.of(
+                        "eventId", "evt-canonical-branch-1",
+                        "branchId", "BR-100",
+                        "targetVisitManagerId", "vm-main",
+                        "status", "OPEN",
+                        "activeWindow", "09:00-18:00",
+                        "queueSize", 1
+                )
+        );
+
+        VisitManagerBranchStateEventPayload payload = mapper.map(event);
+        Assertions.assertEquals("evt-canonical-branch-1", payload.canonicalEventId());
     }
 
     @Test
@@ -507,5 +566,38 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals(Instant.parse("2026-04-09T11:44:55Z"), mapped.updatedAt());
         Assertions.assertEquals("entity-changed-sync", mapped.updatedBy());
         Assertions.assertEquals("BR-NESTED-META-1", mapped.branchId());
+    }
+
+    @Test
+    void shouldUseConfiguredPathsForVisitEventPayload() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().getVisitEventMapping().setBranchIdPaths(List.of("payload.branch.code"));
+        cfg.getEventing().getVisitEventMapping().setVisitManagerIdPaths(List.of("payload.targetVm"));
+        cfg.getEventing().getVisitEventMapping().setOccurredAtPaths(List.of("payload.meta.time"));
+        cfg.getEventing().getVisitEventMapping().setEventIdPaths(List.of("payload.meta.id"));
+
+        VisitManagerBranchStateEventMapper configuredMapper = new VisitManagerBranchStateEventMapper(cfg);
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-envelope-fallback",
+                "VISIT_CREATED",
+                "vm-envelope",
+                Instant.parse("2026-04-13T10:00:00Z"),
+                Map.of(
+                        "payload", Map.of(
+                                "branch", Map.of("code", "BR-910"),
+                                "targetVm", "vm-config",
+                                "meta", Map.of(
+                                        "time", "2026-04-13T09:59:30Z",
+                                        "id", "evt-config-910"
+                                )
+                        )
+                )
+        );
+
+        VisitManagerVisitEventPayload payload = configuredMapper.mapVisitEvent(event);
+        Assertions.assertEquals("BR-910", payload.branchId());
+        Assertions.assertEquals("vm-config", payload.sourceVisitManagerId());
+        Assertions.assertEquals(Instant.parse("2026-04-13T09:59:30Z"), payload.occurredAt());
+        Assertions.assertEquals("evt-config-910", payload.canonicalEventId());
     }
 }
