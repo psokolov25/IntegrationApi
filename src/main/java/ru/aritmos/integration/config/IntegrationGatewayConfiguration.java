@@ -534,7 +534,9 @@ public class IntegrationGatewayConfiguration {
         );
         private List<String> visitManagerIdPaths = List.of(
                 "meta.visitManagerId",
+                "meta.targetVisitManagerId",
                 "metadata.visitManagerId",
+                "metadata.targetVisitManagerId",
                 "data.meta.visitManagerId",
                 "data.meta.targetVisitManagerId",
                 "data.visitManagerId",
