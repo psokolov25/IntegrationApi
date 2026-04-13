@@ -60,14 +60,18 @@ public class VisitManagerVisitEventHandler implements EventHandler {
         VisitManagerVisitEventPayload payload = mapper.mapVisitEvent(event);
         String key = payload.sourceVisitManagerId() + ":" + payload.branchId();
         Instant eventTime = event.occurredAt() == null ? Instant.now(clock) : event.occurredAt();
+        String eventId = event.eventId() == null ? "" : event.eventId();
         TrackingState state = trackingByBranchTarget.get(key);
+        if (state != null && !eventId.isBlank() && eventId.equals(state.lastEventId())) {
+            return;
+        }
         if (state != null && eventTime.isBefore(state.lastEventTime())) {
             return;
         }
         Instant now = Instant.now(clock);
         if (state != null
                 && now.isBefore(state.lastRefreshTime().plus(configuration.getBranchStateEventRefreshDebounce()))) {
-            trackingByBranchTarget.put(key, new TrackingState(eventTime, state.lastRefreshTime()));
+            trackingByBranchTarget.put(key, new TrackingState(eventTime, state.lastRefreshTime(), eventId));
             return;
         }
         gatewayService.refreshBranchState(
@@ -75,7 +79,7 @@ public class VisitManagerVisitEventHandler implements EventHandler {
                 payload.branchId(),
                 payload.sourceVisitManagerId()
         );
-        trackingByBranchTarget.put(key, new TrackingState(eventTime, now));
+        trackingByBranchTarget.put(key, new TrackingState(eventTime, now, eventId));
     }
 
     private void cleanupStaleTracking() {
@@ -103,7 +107,7 @@ public class VisitManagerVisitEventHandler implements EventHandler {
         return retentionByDebounce.compareTo(minRetention) < 0 ? minRetention : retentionByDebounce;
     }
 
-    private record TrackingState(Instant lastEventTime, Instant lastRefreshTime) {
+    private record TrackingState(Instant lastEventTime, Instant lastRefreshTime, String lastEventId) {
         private Instant lastTouchTime() {
             return lastEventTime.isAfter(lastRefreshTime) ? lastEventTime : lastRefreshTime;
         }
