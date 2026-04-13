@@ -176,6 +176,116 @@ class VisitManagerVisitEventHandlerTest {
     }
 
     @Test
+    void shouldAllowDifferentVisitEventsWithSameOccurredAt() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+        cfg.setBranchRouting(Map.of("BR-505", "vm-main"));
+        cfg.setBranchStateEventRefreshDebounce(Duration.ofMillis(500));
+
+        StubVisitManagerClient client = new StubVisitManagerClient(cfg);
+        GatewayService gatewayService = new GatewayService(
+                new RoutingService(cfg),
+                client,
+                new QueueCache(cfg),
+                new BranchStateCache(cfg),
+                new AuditService(),
+                new VisitManagerMetricsService()
+        );
+        MutableClock clock = new MutableClock(Instant.parse("2026-02-01T15:10:00Z"));
+        VisitManagerVisitEventHandler handler = new VisitManagerVisitEventHandler(
+                gatewayService,
+                new VisitManagerBranchStateEventMapper(),
+                cfg,
+                clock
+        );
+
+        Instant occurredAt = Instant.parse("2026-02-01T15:10:00Z");
+        client.updateBranchState("vm-main", "BR-505",
+                new BranchStateUpdateRequest("OPEN", "09:00-18:00", 1, "vm-first"));
+        handler.handle(new IntegrationEvent(
+                "evt-visit-505-a",
+                "VISIT_CREATED",
+                "vm-main",
+                occurredAt,
+                Map.of("visit", Map.of("branchId", "BR-505"))
+        ));
+
+        clock.setCurrent(Instant.parse("2026-02-01T15:10:02Z"));
+        client.updateBranchState("vm-main", "BR-505",
+                new BranchStateUpdateRequest("PAUSED", "09:00-18:00", 2, "vm-second"));
+        handler.handle(new IntegrationEvent(
+                "evt-visit-505-b",
+                "VISIT_CREATED",
+                "vm-main",
+                occurredAt,
+                Map.of("visit", Map.of("branchId", "BR-505"))
+        ));
+
+        var state = gatewayService.getBranchState("subject", "BR-505", "vm-main");
+        Assertions.assertEquals("PAUSED", state.status(),
+                "разные события с одинаковым occurredAt не должны теряться");
+        Assertions.assertEquals("vm-second", state.updatedBy());
+    }
+
+    @Test
+    void shouldIgnoreDuplicateVisitEventByEventId() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+        cfg.setBranchRouting(Map.of("BR-506", "vm-main"));
+        cfg.setBranchStateEventRefreshDebounce(Duration.ofMillis(500));
+
+        StubVisitManagerClient client = new StubVisitManagerClient(cfg);
+        GatewayService gatewayService = new GatewayService(
+                new RoutingService(cfg),
+                client,
+                new QueueCache(cfg),
+                new BranchStateCache(cfg),
+                new AuditService(),
+                new VisitManagerMetricsService()
+        );
+        MutableClock clock = new MutableClock(Instant.parse("2026-02-01T15:11:00Z"));
+        VisitManagerVisitEventHandler handler = new VisitManagerVisitEventHandler(
+                gatewayService,
+                new VisitManagerBranchStateEventMapper(),
+                cfg,
+                clock
+        );
+
+        client.updateBranchState("vm-main", "BR-506",
+                new BranchStateUpdateRequest("OPEN", "09:00-18:00", 1, "vm-first"));
+        handler.handle(new IntegrationEvent(
+                "evt-visit-506",
+                "VISIT_CREATED",
+                "vm-main",
+                Instant.parse("2026-02-01T15:11:00Z"),
+                Map.of("visit", Map.of("branchId", "BR-506"))
+        ));
+
+        clock.setCurrent(Instant.parse("2026-02-01T15:11:02Z"));
+        client.updateBranchState("vm-main", "BR-506",
+                new BranchStateUpdateRequest("PAUSED", "09:00-18:00", 2, "vm-duplicate"));
+        handler.handle(new IntegrationEvent(
+                "evt-visit-506",
+                "VISIT_CREATED",
+                "vm-main",
+                Instant.parse("2026-02-01T15:11:01Z"),
+                Map.of("visit", Map.of("branchId", "BR-506"))
+        ));
+
+        var state = gatewayService.getBranchState("subject", "BR-506", "vm-main");
+        Assertions.assertEquals("OPEN", state.status(), "повтор eventId должен игнорироваться");
+        Assertions.assertEquals("vm-first", state.updatedBy());
+    }
+
+    @Test
     void shouldRefreshBranchStateFromNestedDatabusVisitPayload() {
         IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
         IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
