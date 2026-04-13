@@ -72,6 +72,54 @@ class VisitManagerBranchStateEventMapperTest {
     }
 
     @Test
+    void shouldMapBranchStateUpdatedWithNestedTargetVisitManagerId() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-2b",
+                "branch-state-updated",
+                "vm-fallback",
+                Instant.parse("2026-02-01T11:05:30Z"),
+                Map.of(
+                        "meta", Map.of("targetVisitManagerId", "vm-nested-main"),
+                        "data", Map.of(
+                                "branch", Map.of("id", "BR-101-B"),
+                                "state", Map.of(
+                                        "status", "OPEN",
+                                        "activeWindow", "09:00-18:00"
+                                )
+                        )
+                )
+        );
+
+        VisitManagerBranchStateEventPayload payload = mapper.map(event);
+        Assertions.assertEquals("vm-nested-main", payload.sourceVisitManagerId());
+        Assertions.assertEquals("BR-101-B", payload.branchId());
+    }
+
+    @Test
+    void shouldMapBranchStateUpdatedWithSnakeCaseTargetVisitManagerId() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-2c",
+                "branch-state-updated",
+                "vm-fallback",
+                Instant.parse("2026-02-01T11:05:45Z"),
+                Map.of(
+                        "data", Map.of(
+                                "meta", Map.of("target_visit_manager_id", "vm-snake-main"),
+                                "branch", Map.of("id", "BR-101-C"),
+                                "state", Map.of(
+                                        "status", "OPEN",
+                                        "activeWindow", "09:00-18:00"
+                                )
+                        )
+                )
+        );
+
+        VisitManagerBranchStateEventPayload payload = mapper.map(event);
+        Assertions.assertEquals("vm-snake-main", payload.sourceVisitManagerId());
+        Assertions.assertEquals("BR-101-C", payload.branchId());
+    }
+
+    @Test
     void shouldMapVisitLifecycleEventPayload() {
         IntegrationEvent event = new IntegrationEvent(
                 "evt-vm-3",
@@ -88,6 +136,25 @@ class VisitManagerBranchStateEventMapperTest {
         Assertions.assertEquals("vm-main", payload.sourceVisitManagerId());
         Assertions.assertEquals("BR-201", payload.branchId());
         Assertions.assertEquals("VISIT_CALLED", payload.visitEventType());
+    }
+
+    @Test
+    void shouldMapVisitLifecycleEventPayloadWithMetadataTargetVisitManagerId() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-vm-3c",
+                "VISIT_COMPLETED",
+                "vm-source-fallback",
+                Instant.parse("2026-02-01T11:07:00Z"),
+                Map.of(
+                        "data", Map.of("branch", Map.of("id", "BR-202")),
+                        "metadata", Map.of("targetVisitManagerId", "vm-metadata-main")
+                )
+        );
+
+        VisitManagerVisitEventPayload payload = mapper.mapVisitEvent(event);
+        Assertions.assertEquals("vm-metadata-main", payload.sourceVisitManagerId());
+        Assertions.assertEquals("BR-202", payload.branchId());
+        Assertions.assertEquals("VISIT_COMPLETED", payload.visitEventType());
     }
 
     @Test

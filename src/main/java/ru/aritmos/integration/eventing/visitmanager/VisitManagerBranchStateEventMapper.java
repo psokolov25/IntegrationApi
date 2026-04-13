@@ -35,8 +35,21 @@ public class VisitManagerBranchStateEventMapper {
             throw new IllegalArgumentException("payload обязателен для branch-state-updated");
         }
         String branchId = required(payload, "data.branch.id", "data.branchId", "data.branch_id", "branchId", "branch_id");
-        String sourceVisitManagerId = asString(first(payload, "meta.visitManagerId", "metadata.visitManagerId", "data.visitManagerId",
-                "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"));
+        String sourceVisitManagerId = asString(first(payload,
+                "meta.visitManagerId",
+                "meta.targetVisitManagerId",
+                "meta.target_visit_manager_id",
+                "metadata.visitManagerId",
+                "metadata.targetVisitManagerId",
+                "metadata.target_visit_manager_id",
+                "data.meta.visitManagerId",
+                "data.meta.targetVisitManagerId",
+                "data.meta.target_visit_manager_id",
+                "data.visitManagerId",
+                "data.targetVisitManagerId",
+                "visitManagerId",
+                "targetVisitManagerId",
+                "target_visit_manager_id"));
         if (sourceVisitManagerId == null || sourceVisitManagerId.isBlank()) {
             sourceVisitManagerId = event.source();
         }
@@ -89,14 +102,21 @@ public class VisitManagerBranchStateEventMapper {
         String sourceVisitManagerId = asString(first(payload,
                 "meta.visitManagerId",
                 "meta.targetVisitManagerId",
+                "meta.target_visit_manager_id",
                 "metadata.visitManagerId",
+                "metadata.targetVisitManagerId",
+                "metadata.target_visit_manager_id",
                 "data.meta.visitManagerId",
                 "data.meta.targetVisitManagerId",
+                "data.meta.target_visit_manager_id",
                 "data.metadata.visitManagerId",
+                "data.metadata.targetVisitManagerId",
+                "data.metadata.target_visit_manager_id",
                 "data.visitManagerId",
                 "data.targetVisitManagerId",
                 "data.entities.*.meta.visitManagerId",
                 "data.entities.*.meta.targetVisitManagerId",
+                "data.entities.*.meta.target_visit_manager_id",
                 "visitManagerId",
                 "targetVisitManagerId",
                 "target_visit_manager_id"));

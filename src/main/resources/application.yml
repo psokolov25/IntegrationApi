@@ -123,7 +123,7 @@ integration:
       queue-size-paths: ["newValue.queueSize", "oldValue.queueSize", "data.state.queueSize", "data.queueSize", "data.entity.state.queueSize", "data.entity.queueSize", "queueSize", "queue_size"]
       updated-at-paths: ["data.state.updatedAt", "data.updatedAt", "data.entity.state.updatedAt", "data.entity.updatedAt", "updatedAt", "updated_at"]
       updated-by-paths: ["data.state.updatedBy", "data.updatedBy", "data.entity.state.updatedBy", "data.entity.updatedBy", "updatedBy", "updated_by"]
-      visit-manager-id-paths: ["meta.visitManagerId", "metadata.visitManagerId", "data.visitManagerId", "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"]
+      visit-manager-id-paths: ["meta.visitManagerId", "meta.targetVisitManagerId", "metadata.visitManagerId", "metadata.targetVisitManagerId", "data.meta.visitManagerId", "data.meta.targetVisitManagerId", "data.visitManagerId", "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"]
   queue-cache-ttl: 30s
   aggregate-max-branches: 200
   aggregate-request-timeout-millis: 3000
