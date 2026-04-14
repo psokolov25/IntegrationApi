@@ -28,6 +28,7 @@ Integration API — отдельный gateway/federation слой для без
 
 ### Этап 6. Event-driven integration (текущий)
 - ingestion endpoint: `POST /api/v1/events/ingest`;
+- inbound Kafka/DataBus listener для подчиненной шины СУО (`integration.eventing.kafka.enabled=true`);
 - replay endpoint: `POST /api/v1/events/replay/{eventId}`;
 - DLQ replay endpoint: `POST /api/v1/events/replay-dlq/{eventId}`;
 - DLQ bulk replay endpoint: `POST /api/v1/events/replay-dlq?limit=N`;
@@ -39,6 +40,7 @@ Integration API — отдельный gateway/federation слой для без
 - governance endpoints: `POST /api/v1/events/import/preview?clearBeforeImport=...&strictPolicies=...`, `POST /api/v1/events/import/validate?strictPolicies=...`, `POST /api/v1/events/import/analyze`, `GET /api/v1/events/capabilities`, `GET /api/v1/events/limits`, `GET /api/v1/events/version`;
 - inbox/idempotency + retry/DLQ + replay store;
 - transport adapter SPI и базовый Kafka/DataBus adapter;
+- inbound consumer group для DataBus (Kafka) с обработкой сообщений через тот же ingestion pipeline (`validation -> idempotency -> retry/DLQ -> outbox`);
 - валидация `source/occurredAt/payload-size`, базовые in-memory метрики и health-оценка по порогам.
 
 **Статус текущей стадии:** Этап 6.12 (snapshot analysis + violation codes) реализован, **готово к стадии тестирования**.
@@ -124,7 +126,7 @@ mvn exec:java
 ```
 
 ## Ограничения текущего состояния
-- Eventing слой пока in-memory (без Kafka consumer group и persistent inbox/outbox);
+- Eventing слой использует in-memory inbox/outbox store (Kafka/DataBus listener поддержан, persistent store — следующий шаг hardening);
 - Рабочий режим downstream VisitManager для продукта — `HTTP` (режим `STUB` оставлен только для локальных тестов).
 - production-hardening еще впереди.
 - Error contract стандартизован, но пока без централизованной external observability sink.

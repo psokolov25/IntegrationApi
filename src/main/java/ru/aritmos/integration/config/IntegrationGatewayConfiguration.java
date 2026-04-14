@@ -788,6 +788,10 @@ public class IntegrationGatewayConfiguration {
     @Introspected
     public static class KafkaSettings {
         private boolean enabled = false;
+        private String bootstrapServers = "";
+        private String consumerGroup = "integration-api-databus";
+        private String autoOffsetReset = "latest";
+        private long pollTimeoutMillis = 500;
         private String inboundTopic = "integration.inbound";
         private String outboundTopic = "integration.outbound";
 
@@ -797,6 +801,38 @@ public class IntegrationGatewayConfiguration {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
+        }
+
+        public String getBootstrapServers() {
+            return bootstrapServers;
+        }
+
+        public void setBootstrapServers(String bootstrapServers) {
+            this.bootstrapServers = bootstrapServers;
+        }
+
+        public String getConsumerGroup() {
+            return consumerGroup;
+        }
+
+        public void setConsumerGroup(String consumerGroup) {
+            this.consumerGroup = consumerGroup;
+        }
+
+        public String getAutoOffsetReset() {
+            return autoOffsetReset;
+        }
+
+        public void setAutoOffsetReset(String autoOffsetReset) {
+            this.autoOffsetReset = autoOffsetReset;
+        }
+
+        public long getPollTimeoutMillis() {
+            return pollTimeoutMillis;
+        }
+
+        public void setPollTimeoutMillis(long pollTimeoutMillis) {
+            this.pollTimeoutMillis = pollTimeoutMillis;
         }
 
         public String getInboundTopic() {

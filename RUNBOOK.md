@@ -13,6 +13,7 @@
    - `integration.aggregate-max-branches` (лимит количества **уникальных** `branchIds` после нормализации в `GET /api/v1/queues/aggregate`);
    - `integration.aggregate-request-timeout-millis` (timeout fan-out для `GET /api/v1/queues/aggregate`);
    - `integration.eventing.entity-changed-branch-mapping.*` (eventType/class/paths для гибкого маппинга `ENTITY_CHANGED` → branch-state).
+   - при включении подчиненной шины DataBus (Kafka listener): `integration.eventing.kafka.enabled`, `integration.eventing.kafka.bootstrap-servers`, `integration.eventing.kafka.consumer-group`, `integration.eventing.kafka.auto-offset-reset`, `integration.eventing.kafka.poll-timeout-millis`, `integration.eventing.kafka.inbound-topic`.
 3. Проверить branch-state API (`/api/v1/branches/*`) и eventing pipeline (`/api/v1/events/*`).
 4. При проблемах консистентности branch-state:
    - проверить корректность DataBus payload;
@@ -115,6 +116,7 @@
 
 ## Диагностика
 - Проверить `integration.eventing.enabled` и `integration.eventing.max-retries`.
+- Проверить конфигурацию Kafka/DataBus listener (`integration.eventing.kafka.*`), особенно `bootstrap-servers` и `inbound-topic` при `kafka.enabled=true`.
 - Проверить `integration.eventing.max-payload-fields` и `integration.eventing.max-future-skew-seconds`.
 - Проверить пороги `integration.eventing.dlq-warn-threshold` и `integration.eventing.duplicate-warn-threshold`.
 - Проверить лимиты/retention: `integration.eventing.max-dlq-events`, `integration.eventing.max-processed-events`, `integration.eventing.retention-seconds`.
@@ -158,6 +160,7 @@
 
 ## Инциденты
 - DLQ растет: проверить handler для `eventType` и валидацию payload.
+- Для inbound Kafka/DataBus при невалидном JSON listener формирует synthetic событие `DATABUS_INVALID_PAYLOAD` (id `invalid:<topic>:<partition>:<offset>`) и отправляет его в общий ingestion pipeline; при росте DLQ проверять `payload.error`, `payload.rawPayloadPreview` и контрольную сумму `payload.rawPayloadHash`.
 - Outbox растет: проверить доступность внешнего транспорта и выполнить `POST /api/v1/events/outbox/flush?limit=N`.
 - Outbox растет при активном webhook transport: проверить HTTP-ответы внешнего шлюза (ожидается 2xx), корректность `webhook.url`, timeout и auth-header/token.
 - Если webhook получает «лишние»/«чужие» события, проверить фильтрацию `integration.eventing.webhook.target-systems`

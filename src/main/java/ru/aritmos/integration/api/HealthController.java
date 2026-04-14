@@ -231,9 +231,10 @@ public class HealthController {
             if (baseUrl == null || baseUrl.isBlank()) {
                 return false;
             }
-            String normalizedBase = baseUrl.endsWith("/")
-                    ? baseUrl.substring(0, baseUrl.length() - 1)
-                    : baseUrl;
+            String trimmedBase = baseUrl.trim();
+            String normalizedBase = trimmedBase.endsWith("/")
+                    ? trimmedBase.substring(0, trimmedBase.length() - 1)
+                    : trimmedBase;
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(URI.create(normalizedBase + probePath))
                     .timeout(Duration.ofMillis(Math.max(1, settings.getReadTimeoutMillis())))
@@ -253,7 +254,8 @@ public class HealthController {
         if (path == null || path.isBlank()) {
             return "/health/readiness";
         }
-        return path.startsWith("/") ? path : "/" + path;
+        String normalized = path.trim();
+        return normalized.startsWith("/") ? normalized : "/" + normalized;
     }
 
     private void applyProbeAuthorization(HttpRequest.Builder requestBuilder,
