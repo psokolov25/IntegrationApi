@@ -8,7 +8,9 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.WakeupException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
@@ -20,6 +22,7 @@ import java.security.MessageDigest;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.HashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -44,9 +47,15 @@ public class KafkaDataBusInboundListener {
     public KafkaDataBusInboundListener(IntegrationGatewayConfiguration configuration,
                                        EventDispatcherService dispatcherService,
                                        ObjectMapper objectMapper) {
+        this(configuration, dispatcherService, new KafkaDataBusInboundMapper(objectMapper));
+    }
+
+    KafkaDataBusInboundListener(IntegrationGatewayConfiguration configuration,
+                                EventDispatcherService dispatcherService,
+                                KafkaDataBusInboundMapper inboundMapper) {
         this.configuration = configuration;
         this.dispatcherService = dispatcherService;
-        this.inboundMapper = new KafkaDataBusInboundMapper(objectMapper);
+        this.inboundMapper = inboundMapper;
     }
 
     @PostConstruct
@@ -65,14 +74,14 @@ public class KafkaDataBusInboundListener {
         }
 
         Properties props = new Properties();
-        props.put("bootstrap.servers", kafka.getBootstrapServers().trim());
-        props.put("group.id", kafka.getConsumerGroup() == null || kafka.getConsumerGroup().isBlank()
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers().trim());
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, kafka.getConsumerGroup() == null || kafka.getConsumerGroup().isBlank()
                 ? "integration-api-databus"
                 : kafka.getConsumerGroup().trim());
-        props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-        props.put("enable.auto.commit", "false");
-        props.put("auto.offset.reset", kafka.getAutoOffsetReset() == null || kafka.getAutoOffsetReset().isBlank()
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, kafka.getAutoOffsetReset() == null || kafka.getAutoOffsetReset().isBlank()
                 ? "latest"
                 : kafka.getAutoOffsetReset().trim());
 
@@ -120,13 +129,16 @@ public class KafkaDataBusInboundListener {
         while (running.get()) {
             try {
                 ConsumerRecords<String, String> records = consumer.poll(timeout);
+                Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
                 for (ConsumerRecord<String, String> record : records) {
                     boolean shouldCommit = handleRecord(record);
                     if (shouldCommit) {
-                        commitOffset(record);
+                        TopicPartition topicPartition = new TopicPartition(record.topic(), record.partition());
+                        offsetsToCommit.put(topicPartition, new OffsetAndMetadata(record.offset() + 1));
                     }
                 }
-            } catch (org.apache.kafka.common.errors.WakeupException ex) {
+                commitOffsets(offsetsToCommit);
+            } catch (WakeupException ex) {
                 if (running.get()) {
                     LOG.warn("KAFKA_DATABUS_LISTENER_WAKEUP_UNEXPECTED message={}", ex.getMessage());
                 }
@@ -156,19 +168,19 @@ public class KafkaDataBusInboundListener {
         try {
             IntegrationEvent invalidEvent = toInvalidPayloadEvent(record, rootCause);
             EventProcessingResult result = dispatcherService.process(invalidEvent);
-            LOG.warn("KAFKA_DATABUS_INVALID_PAYLOAD_DLQ topic={} partition={} offset={} status={} reason={}",
+            LOG.warn("KAFKA_DATABUS_INVALID_PAYLOAD_DLQ topic={} partition={} offset={} status={} errorType={}",
                     record.topic(),
                     record.partition(),
                     record.offset(),
                     result.status(),
-                    rootCause.getMessage());
+                    rootCause == null ? "unknown" : rootCause.getClass().getSimpleName());
             return true;
         } catch (Exception ex) {
-            LOG.warn("KAFKA_DATABUS_EVENT_FAILED topic={} partition={} offset={} reason={}",
+            LOG.warn("KAFKA_DATABUS_EVENT_FAILED topic={} partition={} offset={} errorType={}",
                     record.topic(),
                     record.partition(),
                     record.offset(),
-                    ex.getMessage());
+                    ex.getClass().getSimpleName());
             return false;
         }
     }
@@ -186,7 +198,7 @@ public class KafkaDataBusInboundListener {
                         "offset", record.offset(),
                         "rawPayloadPreview", sanitizePayloadPreview(rawPayload),
                         "rawPayloadHash", sha256(rawPayload),
-                        "error", rootCause == null ? "unknown" : String.valueOf(rootCause.getMessage())
+                        "error", rootCause == null ? "unknown" : rootCause.getClass().getSimpleName()
                 )
         );
     }
@@ -215,15 +227,15 @@ public class KafkaDataBusInboundListener {
         }
     }
 
-    private void commitOffset(ConsumerRecord<String, String> record) {
+    private void commitOffsets(Map<TopicPartition, OffsetAndMetadata> offsetsToCommit) {
+        if (offsetsToCommit == null || offsetsToCommit.isEmpty()) {
+            return;
+        }
         try {
-            TopicPartition topicPartition = new TopicPartition(record.topic(), record.partition());
-            consumer.commitSync(java.util.Map.of(topicPartition, new OffsetAndMetadata(record.offset() + 1)));
+            consumer.commitSync(offsetsToCommit);
         } catch (Exception ex) {
-            LOG.warn("KAFKA_DATABUS_OFFSET_COMMIT_FAILED topic={} partition={} offset={} reason={}",
-                    record.topic(),
-                    record.partition(),
-                    record.offset(),
+            LOG.warn("KAFKA_DATABUS_OFFSET_COMMIT_FAILED partitions={} reason={}",
+                    offsetsToCommit.keySet(),
                     ex.getMessage());
         }
     }
