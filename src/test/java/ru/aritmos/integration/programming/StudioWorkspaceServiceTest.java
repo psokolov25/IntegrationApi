@@ -110,6 +110,12 @@ class StudioWorkspaceServiceTest {
         Assertions.assertTrue(actions.stream()
                 .anyMatch(action -> "studio.http.processing.profile.export".equals(action.get("id"))));
         Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.debug.history.export".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.debug.history.import.preview".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.debug.history.import.apply".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
                 .anyMatch(action -> "studio.http.processing.profile.preview".equals(action.get("id"))));
         Assertions.assertTrue(actions.stream()
                 .anyMatch(action -> "studio.http.processing.profile.apply".equals(action.get("id"))));
@@ -119,6 +125,10 @@ class StudioWorkspaceServiceTest {
                 .anyMatch(action -> "studio.http.processing.matrix".equals(action.get("id"))));
         Assertions.assertTrue(actions.stream()
                 .anyMatch(action -> "studio.connector.profile.preview".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.external.service.probe".equals(action.get("id"))));
+        Assertions.assertTrue(actions.stream()
+                .anyMatch(action -> "studio.groovy.validate".equals(action.get("id"))));
         Assertions.assertTrue(actions.stream()
                 .anyMatch(action -> "studio.connector.profile.validate".equals(action.get("id"))));
         Assertions.assertTrue(actions.stream()

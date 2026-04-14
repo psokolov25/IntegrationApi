@@ -2,11 +2,14 @@ package ru.aritmos.integration.programming;
 
 import jakarta.inject.Singleton;
 import jakarta.inject.Inject;
+import groovy.lang.Binding;
+import groovy.lang.GroovyShell;
 import ru.aritmos.integration.config.IntegrationGatewayConfiguration;
 import ru.aritmos.integration.domain.StudioOperationCatalogItemDto;
 import ru.aritmos.integration.eventing.EventDispatcherService;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,6 +17,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 
 /**
  * Оркестратор служебных операций programmable-студии для GUI/IDE.
@@ -29,6 +36,9 @@ public class StudioOperationsService {
     private final IntegrationGatewayConfiguration configuration;
     private final List<CustomerMessageBusAdapter> messageBusAdapters;
     private final GroovyScriptStorage scriptStorage;
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(3))
+            .build();
 
     @Inject
     public StudioOperationsService(EventDispatcherService eventDispatcherService,
@@ -89,6 +99,57 @@ public class StudioOperationsService {
                         "operation", operation.name(),
                         "removed", removed,
                         "scriptId", scriptId
+                );
+            }
+            case EXPORT_DEBUG_HISTORY -> {
+                String scriptId = stringParam(args.get("scriptId"), "");
+                int limit = intParam(args.get("limit"), 50);
+                boolean redactSensitive = booleanParam(args.get("redactSensitive"), true);
+                List<Map<String, Object>> entries = scriptDebugHistoryService.list(scriptId, limit).stream()
+                        .map(item -> toDebugHistoryMap(item, redactSensitive))
+                        .toList();
+                yield Map.of(
+                        "operation", operation.name(),
+                        "scriptId", scriptId,
+                        "limit", limit,
+                        "redactSensitive", redactSensitive,
+                        "entries", entries,
+                        "total", entries.size(),
+                        "exportedAt", Instant.now().toString()
+                );
+            }
+            case IMPORT_DEBUG_HISTORY_PREVIEW -> {
+                List<Map<String, Object>> rawEntries = mapListParam(args.get("entries"));
+                Map<String, Object> preview = previewDebugHistoryImport(rawEntries);
+                yield new LinkedHashMap<>(preview);
+            }
+            case IMPORT_DEBUG_HISTORY_APPLY -> {
+                List<Map<String, Object>> rawEntries = mapListParam(args.get("entries"));
+                boolean replaceExisting = booleanParam(args.get("replaceExisting"), false);
+                Map<String, Object> preview = previewDebugHistoryImport(rawEntries);
+                if (!Boolean.TRUE.equals(preview.get("valid"))) {
+                    yield Map.of(
+                            "operation", operation.name(),
+                            "applied", false,
+                            "replaceExisting", replaceExisting,
+                            "preview", preview
+                    );
+                }
+                List<ScriptDebugHistoryService.DebugEntry> parsed = parseDebugHistoryEntries(rawEntries);
+                if (replaceExisting) {
+                    parsed.stream()
+                            .map(ScriptDebugHistoryService.DebugEntry::scriptId)
+                            .filter(value -> value != null && !value.isBlank())
+                            .distinct()
+                            .forEach(scriptDebugHistoryService::clear);
+                }
+                parsed.forEach(scriptDebugHistoryService::record);
+                yield Map.of(
+                        "operation", operation.name(),
+                        "applied", true,
+                        "replaceExisting", replaceExisting,
+                        "imported", parsed.size(),
+                        "preview", preview
                 );
             }
             case REFRESH_BOOTSTRAP -> {
@@ -237,6 +298,20 @@ public class StudioOperationsService {
                         "profile", profile
                 );
             }
+            case PROBE_EXTERNAL_REST_SERVICE -> {
+                String serviceId = stringParam(args.get("serviceId"), "");
+                if (serviceId.isBlank()) {
+                    throw new IllegalArgumentException("serviceId обязателен");
+                }
+                String path = normalizeProbePath(stringParam(args.get("path"), "/health"));
+                String method = normalizeProbeMethod(stringParam(args.get("method"), "GET"));
+                int timeoutMillis = Math.max(100, intParam(args.get("timeoutMillis"), 3000));
+                Map<String, String> headers = stringMapParam(args.get("headers"));
+                yield Map.of(
+                        "operation", operation.name(),
+                        "probe", probeExternalRestService(serviceId, method, path, timeoutMillis, headers)
+                );
+            }
             case VALIDATE_CONNECTOR_CONFIG -> {
                 String brokerType = stringParam(args.get("brokerType"), "KAFKA").toUpperCase();
                 Map<String, String> properties = stringMapParam(args.get("properties"));
@@ -278,15 +353,22 @@ public class StudioOperationsService {
             case APPLY_OPENAPI_REST_CLIENTS_TOOLKIT -> {
                 Map<String, Object> generated = objectMapParam(args.get("generated"));
                 boolean replaceExisting = booleanParam(args.get("replaceExisting"), false);
-                int savedScripts = applyGeneratedOpenApiScripts(generated, replaceExisting, subjectId);
+                Map<String, Object> scriptsReport = applyGeneratedOpenApiScripts(generated, replaceExisting, subjectId);
                 int appliedServices = applyGeneratedOpenApiExternalService(generated, replaceExisting);
                 yield Map.of(
                         "operation", operation.name(),
                         "replaceExisting", replaceExisting,
                         "appliedExternalRestServices", appliedServices,
-                        "savedScripts", savedScripts,
+                        "savedScripts", scriptsReport.get("savedScripts"),
+                        "skippedExistingScripts", scriptsReport.get("skippedExistingScripts"),
+                        "invalidScripts", scriptsReport.get("invalidScripts"),
                         "serviceId", stringParam(generated.get("serviceId"), "")
                 );
+            }
+            case VALIDATE_GROOVY_SCRIPT_BODY -> {
+                String scriptBody = stringParam(args.get("scriptBody"), "");
+                GroovyScriptType type = parseScriptType(stringParam(args.get("type"), "VISIT_MANAGER_ACTION"));
+                yield validateGroovyScriptBody(type, scriptBody);
             }
             case EXPORT_CONNECTOR_PRESETS -> {
                 Map<String, Object> export = exportConnectorPresets();
@@ -601,6 +683,20 @@ public class StudioOperationsService {
         return "true".equalsIgnoreCase(String.valueOf(value).trim());
     }
 
+    private long longParam(Object value, long fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (NumberFormatException ex) {
+            return fallback;
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, String> stringMapParam(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
@@ -808,9 +904,11 @@ public class StudioOperationsService {
         return applyExternalRestServices(List.of(externalPreset), replaceExisting);
     }
 
-    private int applyGeneratedOpenApiScripts(Map<String, Object> generated, boolean replaceExisting, String subjectId) {
+    private Map<String, Object> applyGeneratedOpenApiScripts(Map<String, Object> generated, boolean replaceExisting, String subjectId) {
         List<Map<String, Object>> scripts = mapListParam(generated.get("scripts"));
         int applied = 0;
+        int skippedExisting = 0;
+        List<Map<String, Object>> invalidScripts = new java.util.ArrayList<>();
         for (Map<String, Object> script : scripts) {
             Map<String, Object> saveRequest = objectMapParam(script.get("saveScriptRequest"));
             String scriptId = stringParam(saveRequest.get("scriptId"), stringParam(script.get("scriptId"), ""));
@@ -818,6 +916,7 @@ public class StudioOperationsService {
                 continue;
             }
             if (!replaceExisting && scriptStorage.get(scriptId) != null) {
+                skippedExisting++;
                 continue;
             }
             String scriptBody = stringParam(saveRequest.get("scriptBody"), stringParam(script.get("scriptBody"), ""));
@@ -826,6 +925,15 @@ public class StudioOperationsService {
             }
             String description = stringParam(saveRequest.get("description"), "OpenAPI generated script");
             GroovyScriptType type = parseScriptType(stringParam(saveRequest.get("type"), "VISIT_MANAGER_ACTION"));
+            Map<String, Object> validation = validateGroovyScriptBody(type, scriptBody);
+            if (!Boolean.TRUE.equals(validation.get("ok"))) {
+                invalidScripts.add(Map.of(
+                        "scriptId", scriptId,
+                        "type", type.name(),
+                        "message", stringParam(validation.get("message"), "Синтаксическая ошибка Groovy")
+                ));
+                continue;
+            }
             scriptStorage.save(new StoredGroovyScript(
                     scriptId,
                     type,
@@ -836,7 +944,11 @@ public class StudioOperationsService {
             ));
             applied++;
         }
-        return applied;
+        return Map.of(
+                "savedScripts", applied,
+                "skippedExistingScripts", skippedExisting,
+                "invalidScripts", List.copyOf(invalidScripts)
+        );
     }
 
     private GroovyScriptType parseScriptType(String rawType) {
@@ -844,6 +956,173 @@ public class StudioOperationsService {
             return GroovyScriptType.valueOf(rawType == null ? "VISIT_MANAGER_ACTION" : rawType.trim().toUpperCase());
         } catch (Exception ex) {
             return GroovyScriptType.VISIT_MANAGER_ACTION;
+        }
+    }
+
+    private Map<String, Object> validateGroovyScriptBody(GroovyScriptType type, String scriptBody) {
+        if (scriptBody == null || scriptBody.isBlank()) {
+            return Map.of(
+                    "operation", Operation.VALIDATE_GROOVY_SCRIPT_BODY.name(),
+                    "ok", false,
+                    "type", type.name(),
+                    "message", "scriptBody обязателен",
+                    "bindingHints", bindingHints(type)
+            );
+        }
+        Binding binding = new Binding();
+        binding.setVariable("payload", Map.of());
+        binding.setVariable("input", Map.of());
+        binding.setVariable("params", Map.of());
+        binding.setVariable("parameters", Map.of());
+        binding.setVariable("context", Map.of());
+        binding.setVariable("execution", Map.of("payload", Map.of(), "parameters", Map.of(), "context", Map.of()));
+        binding.setVariable("subject", "studio-preview");
+        binding.setVariable("externalRestClient", null);
+        binding.setVariable("messageBusGateway", null);
+        binding.setVariable("visitManagerInvoker", null);
+        try {
+            new GroovyShell(binding).parse(scriptBody);
+            return Map.of(
+                    "operation", Operation.VALIDATE_GROOVY_SCRIPT_BODY.name(),
+                    "ok", true,
+                    "type", type.name(),
+                    "message", "Скрипт успешно прошел синтаксическую валидацию",
+                    "bindingHints", bindingHints(type)
+            );
+        } catch (Exception ex) {
+            return Map.of(
+                    "operation", Operation.VALIDATE_GROOVY_SCRIPT_BODY.name(),
+                    "ok", false,
+                    "type", type.name(),
+                    "message", stringParam(ex.getMessage(), "Синтаксическая ошибка Groovy"),
+                    "bindingHints", bindingHints(type)
+            );
+        }
+    }
+
+    private List<String> bindingHints(GroovyScriptType type) {
+        List<String> common = new java.util.ArrayList<>(List.of(
+                "payload", "input", "params", "parameters", "context", "execution", "subject",
+                "externalRestClient", "messageBusGateway"
+        ));
+        if (type == GroovyScriptType.VISIT_MANAGER_ACTION || type == GroovyScriptType.MESSAGE_BUS_REACTION) {
+            common.add("visitManagerInvoker");
+        }
+        if (type == GroovyScriptType.BRANCH_CACHE_QUERY) {
+            common.add("branchStateSnapshot");
+            common.add("getBranchState");
+        }
+        return List.copyOf(common);
+    }
+
+    private Map<String, Object> toDebugHistoryMap(ScriptDebugHistoryService.DebugEntry item, boolean redactSensitive) {
+        return Map.of(
+                "scriptId", stringParam(item.scriptId(), ""),
+                "startedAt", item.startedAt() == null ? "" : item.startedAt().toString(),
+                "durationMs", item.durationMs(),
+                "ok", item.ok(),
+                "result", item.result() == null ? Map.of() : redactValue(item.result(), "", redactSensitive),
+                "error", stringParam(item.error(), ""),
+                "payload", item.payload() == null ? Map.of() : redactValue(item.payload(), "payload", redactSensitive),
+                "parameters", item.parameters() == null ? Map.of() : redactValue(item.parameters(), "parameters", redactSensitive),
+                "context", item.context() == null ? Map.of() : redactValue(item.context(), "context", redactSensitive)
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object redactValue(Object value, String keyPath, boolean enabled) {
+        if (!enabled || value == null) {
+            return value;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> redacted = new LinkedHashMap<>();
+            map.forEach((key, val) -> {
+                String keyString = key == null ? "" : String.valueOf(key);
+                String path = keyPath.isBlank() ? keyString : keyPath + "." + keyString;
+                if (isSensitiveKey(keyString)) {
+                    redacted.put(keyString, "***");
+                } else {
+                    redacted.put(keyString, redactValue(val, path, true));
+                }
+            });
+            return Map.copyOf(redacted);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(item -> redactValue(item, keyPath, true))
+                    .toList();
+        }
+        return value;
+    }
+
+    private boolean isSensitiveKey(String key) {
+        String normalized = key == null ? "" : key.replace("-", "").replace("_", "").toLowerCase();
+        return normalized.contains("password")
+                || normalized.contains("passwd")
+                || normalized.contains("secret")
+                || normalized.contains("token")
+                || normalized.contains("apikey")
+                || normalized.contains("authorization");
+    }
+
+    private Map<String, Object> previewDebugHistoryImport(List<Map<String, Object>> rawEntries) {
+        List<String> errors = new java.util.ArrayList<>();
+        int index = 0;
+        for (Map<String, Object> raw : rawEntries) {
+            String scriptId = stringParam(raw.get("scriptId"), "");
+            if (scriptId.isBlank()) {
+                errors.add("entries[" + index + "].scriptId обязателен");
+            }
+            if (parseInstantOrNull(raw.get("startedAt")) == null) {
+                errors.add("entries[" + index + "].startedAt должен быть ISO-8601");
+            }
+            long durationMs = longParam(raw.get("durationMs"), -1);
+            if (durationMs < 0) {
+                errors.add("entries[" + index + "].durationMs должен быть >= 0");
+            }
+            index++;
+        }
+        return Map.of(
+                "operation", Operation.IMPORT_DEBUG_HISTORY_PREVIEW.name(),
+                "valid", errors.isEmpty(),
+                "errors", List.copyOf(errors),
+                "entriesTotal", rawEntries.size(),
+                "scripts", rawEntries.stream()
+                        .map(item -> stringParam(item.get("scriptId"), ""))
+                        .filter(value -> !value.isBlank())
+                        .distinct()
+                        .sorted()
+                        .toList()
+        );
+    }
+
+    private List<ScriptDebugHistoryService.DebugEntry> parseDebugHistoryEntries(List<Map<String, Object>> rawEntries) {
+        List<ScriptDebugHistoryService.DebugEntry> parsed = new java.util.ArrayList<>();
+        for (Map<String, Object> raw : rawEntries) {
+            parsed.add(new ScriptDebugHistoryService.DebugEntry(
+                    stringParam(raw.get("scriptId"), ""),
+                    parseInstantOrNull(raw.get("startedAt")),
+                    Math.max(0, longParam(raw.get("durationMs"), 0)),
+                    booleanParam(raw.get("ok"), false),
+                    raw.get("result"),
+                    stringParam(raw.get("error"), ""),
+                    objectMapParam(raw.get("payload")),
+                    objectMapParam(raw.get("parameters")),
+                    objectMapParam(raw.get("context"))
+            ));
+        }
+        return parsed;
+    }
+
+    private Instant parseInstantOrNull(Object value) {
+        String text = stringParam(value, "");
+        if (text.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(text);
+        } catch (Exception ex) {
+            return null;
         }
     }
 
@@ -884,10 +1163,136 @@ public class StudioOperationsService {
         );
     }
 
+    private String normalizeProbePath(String path) {
+        if (path == null || path.isBlank()) {
+            return "/health";
+        }
+        String trimmed = path.trim();
+        return trimmed.startsWith("/") ? trimmed : "/" + trimmed;
+    }
+
+    private String normalizeProbeMethod(String method) {
+        String normalized = method == null || method.isBlank() ? "GET" : method.trim().toUpperCase();
+        return switch (normalized) {
+            case "GET", "HEAD", "OPTIONS" -> normalized;
+            default -> "GET";
+        };
+    }
+
+    private Map<String, Object> probeExternalRestService(String serviceId,
+                                                         String method,
+                                                         String path,
+                                                         int timeoutMillis,
+                                                         Map<String, String> headers) {
+        IntegrationGatewayConfiguration.ExternalRestServiceSettings service = configuration.getProgrammableApi()
+                .getExternalRestServices().stream()
+                .filter(item -> serviceId.equals(item.getId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Внешний REST service не найден: " + serviceId));
+        String baseUrl = stringParam(service.getBaseUrl(), "");
+        if (baseUrl.isBlank()) {
+            return Map.of(
+                    "serviceId", serviceId,
+                    "method", method,
+                    "path", path,
+                    "timeoutMillis", timeoutMillis,
+                    "ok", false,
+                    "reachable", false,
+                    "status", "DOWN",
+                    "error", "Не задан baseUrl"
+            );
+        }
+        String url = baseUrl + path;
+        HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofMillis(timeoutMillis));
+        Map<String, String> allHeaders = new LinkedHashMap<>();
+        if (service.getDefaultHeaders() != null) {
+            allHeaders.putAll(service.getDefaultHeaders());
+        }
+        allHeaders.putAll(headers);
+        allHeaders.forEach(builder::header);
+        HttpRequest request = switch (method) {
+            case "HEAD" -> builder.method("HEAD", HttpRequest.BodyPublishers.noBody()).build();
+            case "OPTIONS" -> builder.method("OPTIONS", HttpRequest.BodyPublishers.noBody()).build();
+            default -> builder.GET().build();
+        };
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            int statusCode = response.statusCode();
+            boolean ok = statusCode >= 200 && statusCode < 300;
+            boolean reachable = statusCode > 0 && statusCode < 500;
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("serviceId", serviceId);
+            result.put("method", method);
+            result.put("path", path);
+            result.put("url", url);
+            result.put("timeoutMillis", timeoutMillis);
+            result.put("statusCode", statusCode);
+            result.put("ok", ok);
+            result.put("reachable", reachable);
+            result.put("status", ok ? "UP" : (reachable ? "DEGRADED" : "DOWN"));
+            result.put("responseBodyPreview", trimPreview(response.body(), 500));
+            result.put("checkedAt", Instant.now().toString());
+            return Map.copyOf(result);
+        } catch (Exception ex) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("serviceId", serviceId);
+            result.put("method", method);
+            result.put("path", path);
+            result.put("url", url);
+            result.put("timeoutMillis", timeoutMillis);
+            result.put("ok", false);
+            result.put("reachable", false);
+            result.put("status", "DOWN");
+            result.put("error", ex.getClass().getSimpleName() + ": " + stringParam(ex.getMessage(), "probe failure"));
+            result.put("checkedAt", Instant.now().toString());
+            return Map.copyOf(result);
+        }
+    }
+
+    private String trimPreview(String value, int limit) {
+        if (value == null) {
+            return "";
+        }
+        if (value.length() <= limit) {
+            return value;
+        }
+        return value.substring(0, limit);
+    }
+
     enum Operation {
         FLUSH_OUTBOX("Повторно отправить pending/failed outbox-сообщения", Map.of("limit", 100)),
         RECOVER_STALE_INBOX("Перевести stale PROCESSING inbox-записи в FAILED", Map.of()),
         CLEAR_DEBUG_HISTORY("Очистить debug history (весь или по scriptId)", Map.of("scriptId", "")),
+        EXPORT_DEBUG_HISTORY("Экспортировать debug history Groovy-скриптов для GUI backup", Map.of("scriptId", "", "limit", 50, "redactSensitive", true)),
+        IMPORT_DEBUG_HISTORY_PREVIEW("Предпросмотр импортируемого debug history без применения", Map.of(
+                "entries", List.of(Map.of(
+                        "scriptId", "script-1",
+                        "startedAt", "2026-01-01T10:00:00Z",
+                        "durationMs", 42,
+                        "ok", true,
+                        "result", Map.of("ok", true),
+                        "error", "",
+                        "payload", Map.of(),
+                        "parameters", Map.of(),
+                        "context", Map.of()
+                ))
+        )),
+        IMPORT_DEBUG_HISTORY_APPLY("Импортировать debug history Groovy-скриптов в runtime", Map.of(
+                "replaceExisting", false,
+                "entries", List.of(Map.of(
+                        "scriptId", "script-1",
+                        "startedAt", "2026-01-01T10:00:00Z",
+                        "durationMs", 42,
+                        "ok", true,
+                        "result", Map.of("ok", true),
+                        "error", "",
+                        "payload", Map.of(),
+                        "parameters", Map.of(),
+                        "context", Map.of()
+                ))
+        )),
         REFRESH_BOOTSTRAP("Получить свежий studio bootstrap snapshot", Map.of("debugHistoryLimit", 20)),
         SNAPSHOT_INBOX_OUTBOX("Получить диагностический срез inbox/outbox для IDE", Map.of("limit", 20, "status", "", "includeSent", false)),
         SNAPSHOT_VISIT_MANAGERS("Получить диагностический срез конфигурации VisitManager", Map.of()),
@@ -936,6 +1341,17 @@ public class StudioOperationsService {
         )),
         PREVIEW_CONNECTOR_PROFILE("Предпросмотр профиля внешнего broker/шины для GUI формы настройки", Map.of(
                 "brokerType", "KAFKA"
+        )),
+        PROBE_EXTERNAL_REST_SERVICE("Проверить доступность внешнего REST-сервиса для GUI/Groovy runtime", Map.of(
+                "serviceId", "crm",
+                "path", "/health",
+                "method", "GET",
+                "timeoutMillis", 3000,
+                "headers", Map.of()
+        )),
+        VALIDATE_GROOVY_SCRIPT_BODY("Проверить синтаксис Groovy-скрипта и binding hints для IDE", Map.of(
+                "type", "VISIT_MANAGER_ACTION",
+                "scriptBody", "return [ok: true]"
         )),
         VALIDATE_CONNECTOR_CONFIG("Проверить набор свойств коннектора по профилю brokerType", Map.of(
                 "brokerType", "WEBHOOK_HTTP",
