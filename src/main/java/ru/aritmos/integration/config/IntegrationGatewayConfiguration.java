@@ -813,6 +813,20 @@ public class IntegrationGatewayConfiguration {
         private long pollTimeoutMillis = 500;
         private String inboundTopic = "integration.inbound";
         private String outboundTopic = "integration.outbound";
+        /**
+         * Режим запуска Kafka inbound:
+         * ALL_AGENTS — централизованная служба, слушает все активные agents;
+         * LOCAL_AGENT — сервис как часть конкретного агента (localAgentId);
+         * SELECTED_AGENTS — сервис слушает только selectedAgentIds.
+         */
+        private KafkaAgentMode agentMode = KafkaAgentMode.ALL_AGENTS;
+        private String localAgentId = "";
+        private List<String> selectedAgentIds = new ArrayList<>();
+        /**
+         * Настройки нескольких агентских Kafka-консьюмеров (региональные/контурные шины).
+         * Если список пуст, используется legacy-конфигурация верхнего уровня.
+         */
+        private List<AgentKafkaSettings> agents = new ArrayList<>();
 
         public boolean isEnabled() {
             return enabled;
@@ -869,6 +883,111 @@ public class IntegrationGatewayConfiguration {
         public void setOutboundTopic(String outboundTopic) {
             this.outboundTopic = outboundTopic;
         }
+
+        public KafkaAgentMode getAgentMode() {
+            return agentMode;
+        }
+
+        public void setAgentMode(KafkaAgentMode agentMode) {
+            this.agentMode = agentMode;
+        }
+
+        public String getLocalAgentId() {
+            return localAgentId;
+        }
+
+        public void setLocalAgentId(String localAgentId) {
+            this.localAgentId = localAgentId;
+        }
+
+        public List<String> getSelectedAgentIds() {
+            return selectedAgentIds;
+        }
+
+        public void setSelectedAgentIds(List<String> selectedAgentIds) {
+            this.selectedAgentIds = selectedAgentIds;
+        }
+
+        public List<AgentKafkaSettings> getAgents() {
+            return agents;
+        }
+
+        public void setAgents(List<AgentKafkaSettings> agents) {
+            this.agents = agents;
+        }
+    }
+
+    @Introspected
+    public static class AgentKafkaSettings {
+        private String id = "";
+        private boolean enabled = true;
+        private String bootstrapServers = "";
+        private String consumerGroup = "";
+        private String autoOffsetReset = "";
+        private long pollTimeoutMillis = 0;
+        private String inboundTopic = "";
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getBootstrapServers() {
+            return bootstrapServers;
+        }
+
+        public void setBootstrapServers(String bootstrapServers) {
+            this.bootstrapServers = bootstrapServers;
+        }
+
+        public String getConsumerGroup() {
+            return consumerGroup;
+        }
+
+        public void setConsumerGroup(String consumerGroup) {
+            this.consumerGroup = consumerGroup;
+        }
+
+        public String getAutoOffsetReset() {
+            return autoOffsetReset;
+        }
+
+        public void setAutoOffsetReset(String autoOffsetReset) {
+            this.autoOffsetReset = autoOffsetReset;
+        }
+
+        public long getPollTimeoutMillis() {
+            return pollTimeoutMillis;
+        }
+
+        public void setPollTimeoutMillis(long pollTimeoutMillis) {
+            this.pollTimeoutMillis = pollTimeoutMillis;
+        }
+
+        public String getInboundTopic() {
+            return inboundTopic;
+        }
+
+        public void setInboundTopic(String inboundTopic) {
+            this.inboundTopic = inboundTopic;
+        }
+    }
+
+    public enum KafkaAgentMode {
+        ALL_AGENTS,
+        LOCAL_AGENT,
+        SELECTED_AGENTS
     }
 
     @Introspected

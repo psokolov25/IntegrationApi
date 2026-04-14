@@ -68,6 +68,7 @@ public class BranchStateUpdatedEventHandler implements EventHandler {
         String key = statePayload.sourceVisitManagerId() + ":" + statePayload.branchId();
         String eventId = statePayload.canonicalEventId() == null ? "" : statePayload.canonicalEventId();
         Instant updatedAt = statePayload.updatedAt() == null ? Instant.now(clock) : statePayload.updatedAt();
+        String payloadSignature = buildPayloadSignature(statePayload);
         TrackingState current = trackingByBranchTarget.get(key);
         if (current != null && !eventId.isBlank() && eventId.equals(current.lastEventId())) {
             return;
@@ -75,11 +76,22 @@ public class BranchStateUpdatedEventHandler implements EventHandler {
         if (current != null && updatedAt.isBefore(current.lastUpdatedAt())) {
             return;
         }
+        if (current != null
+                && updatedAt.equals(current.lastUpdatedAt())
+                && payloadSignature.equals(current.lastPayloadSignature())) {
+            return;
+        }
         Instant now = Instant.now(clock);
         if (current != null
                 && now.isBefore(current.lastAppliedAt().plus(configuration.getBranchStateEventRefreshDebounce()))
-                && !updatedAt.isAfter(current.lastUpdatedAt())) {
-            trackingByBranchTarget.put(key, new TrackingState(current.lastUpdatedAt(), current.lastAppliedAt(), eventId));
+                && !updatedAt.isAfter(current.lastUpdatedAt())
+                && payloadSignature.equals(current.lastPayloadSignature())) {
+            trackingByBranchTarget.put(key, new TrackingState(
+                    current.lastUpdatedAt(),
+                    current.lastAppliedAt(),
+                    eventId,
+                    payloadSignature
+            ));
             return;
         }
 
@@ -94,8 +106,17 @@ public class BranchStateUpdatedEventHandler implements EventHandler {
                 statePayload.updatedBy()
         ));
         if (applied) {
-            trackingByBranchTarget.put(key, new TrackingState(updatedAt, now, eventId));
+            trackingByBranchTarget.put(key, new TrackingState(updatedAt, now, eventId, payloadSignature));
         }
+    }
+
+    private String buildPayloadSignature(VisitManagerBranchStateEventPayload payload) {
+        return String.join("|",
+                payload.status() == null ? "" : payload.status(),
+                payload.activeWindow() == null ? "" : payload.activeWindow(),
+                String.valueOf(payload.queueSize()),
+                payload.updatedBy() == null ? "" : payload.updatedBy()
+        );
     }
 
     private void cleanupStaleTracking() {
@@ -122,7 +143,12 @@ public class BranchStateUpdatedEventHandler implements EventHandler {
         return retentionByDebounce.compareTo(minRetention) < 0 ? minRetention : retentionByDebounce;
     }
 
-    private record TrackingState(Instant lastUpdatedAt, Instant lastAppliedAt, String lastEventId) {
+    private record TrackingState(
+            Instant lastUpdatedAt,
+            Instant lastAppliedAt,
+            String lastEventId,
+            String lastPayloadSignature
+    ) {
         private Instant lastTouchTime() {
             return lastUpdatedAt.isAfter(lastAppliedAt) ? lastUpdatedAt : lastAppliedAt;
         }

@@ -12,7 +12,7 @@ import java.time.ZoneOffset;
 class BranchStateCacheTest {
 
     @Test
-    void shouldIgnoreEventWithSameUpdatedAtToPreventOutOfOrderOverride() {
+    void shouldApplyEventWithSameUpdatedAtWhenStateChanged() {
         IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
         BranchStateCache cache = new BranchStateCache(cfg, Clock.fixed(Instant.parse("2026-01-10T10:00:00Z"), ZoneOffset.UTC));
 
@@ -39,9 +39,38 @@ class BranchStateCacheTest {
 
         BranchStateDto actual = cache.get("vm-main", "BR-31");
         Assertions.assertTrue(firstApplied);
+        Assertions.assertTrue(secondApplied);
+        Assertions.assertEquals("CLOSED", actual.status());
+        Assertions.assertEquals("sync-2", actual.updatedBy());
+    }
+
+    @Test
+    void shouldIgnoreEventWithSameUpdatedAtWhenPayloadUnchanged() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        BranchStateCache cache = new BranchStateCache(cfg, Clock.fixed(Instant.parse("2026-01-10T10:00:00Z"), ZoneOffset.UTC));
+
+        cache.putIfNewer(new BranchStateDto(
+                "BR-31B",
+                "vm-main",
+                "OPEN",
+                "09:00-18:00",
+                1,
+                Instant.parse("2026-01-10T10:00:00Z"),
+                false,
+                "sync-1"
+        ));
+        boolean secondApplied = cache.putIfNewer(new BranchStateDto(
+                "BR-31B",
+                "vm-main",
+                "OPEN",
+                "09:00-18:00",
+                1,
+                Instant.parse("2026-01-10T10:00:00Z"),
+                false,
+                "sync-1"
+        ));
+
         Assertions.assertFalse(secondApplied);
-        Assertions.assertEquals("OPEN", actual.status());
-        Assertions.assertEquals("sync-1", actual.updatedBy());
     }
 
     @Test

@@ -682,6 +682,62 @@ class StudioOperationsServiceTest {
     }
 
     @Test
+    void shouldPreviewGeneratedOpenApiToolkitApply(@TempDir Path tempDir) {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        InMemoryGroovyScriptStorage storage = new InMemoryGroovyScriptStorage();
+        storage.save(new StoredGroovyScript(
+                "openapi-visit-manager-get-queues",
+                GroovyScriptType.VISIT_MANAGER_ACTION,
+                "return [cached:true]",
+                "existing",
+                Instant.parse("2026-01-10T10:00:00Z"),
+                "tester"
+        ));
+        IntegrationGatewayConfiguration.ExternalRestServiceSettings existingService =
+                new IntegrationGatewayConfiguration.ExternalRestServiceSettings();
+        existingService.setId("visit-manager");
+        existingService.setBaseUrl("https://existing.local");
+        cfg.getProgrammableApi().setExternalRestServices(List.of(existingService));
+
+        StudioOperationsService service = new StudioOperationsService(
+                buildDispatcher(),
+                new ScriptDebugHistoryService(),
+                buildWorkspaceServiceWithConnectors(),
+                new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                buildProcessor(),
+                cfg,
+                buildAdapters(),
+                storage
+        );
+
+        Map<String, Object> previewResponse = service.execute("PREVIEW_OPENAPI_REST_CLIENTS_TOOLKIT_APPLY", Map.of(
+                "replaceExisting", false,
+                "generated", Map.of(
+                        "serviceId", "visit-manager",
+                        "externalRestServicePreset", Map.of("id", "visit-manager", "baseUrl", "https://visitmanager.local"),
+                        "scripts", List.of(Map.of(
+                                "scriptId", "openapi-visit-manager-get-queues",
+                                "saveScriptRequest", Map.of(
+                                        "scriptId", "openapi-visit-manager-get-queues",
+                                        "type", "VISIT_MANAGER_ACTION",
+                                        "scriptBody", "return [ok: true]"
+                                )
+                        ))
+                )
+        ), "tester");
+
+        Assertions.assertEquals("PREVIEW_OPENAPI_REST_CLIENTS_TOOLKIT_APPLY", previewResponse.get("operation"));
+        Map<String, Object> preview = cast(previewResponse.get("preview"));
+        Map<String, Object> externalServicePreview = cast(preview.get("externalRestService"));
+        Assertions.assertEquals("SKIP_EXISTS", externalServicePreview.get("decision"));
+        Assertions.assertEquals(false, externalServicePreview.get("willApply"));
+        Map<String, Object> summary = cast(preview.get("summary"));
+        Assertions.assertEquals(0, summary.get("scriptsWillSave"));
+        Assertions.assertEquals(1, summary.get("scriptsSkippedExisting"));
+        Assertions.assertEquals(0, summary.get("scriptsInvalid"));
+    }
+
+    @Test
     void shouldExportAndPreviewImportConnectorPresets(@TempDir Path tempDir) {
         IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
         IntegrationGatewayConfiguration.MessageBrokerSettings existingBroker = new IntegrationGatewayConfiguration.MessageBrokerSettings();
@@ -773,6 +829,56 @@ class StudioOperationsServiceTest {
         List<Map<String, Object>> invalid = castListOfMaps(applied.get("invalidScripts"));
         Assertions.assertEquals(1, invalid.size());
         Assertions.assertEquals("broken-script", invalid.get(0).get("scriptId"));
+    }
+
+    @Test
+    void shouldPreviewApplyingOpenApiToolkitInDryRunMode(@TempDir Path tempDir) {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        InMemoryGroovyScriptStorage storage = new InMemoryGroovyScriptStorage();
+        StudioOperationsService service = new StudioOperationsService(
+                buildDispatcher(),
+                new ScriptDebugHistoryService(),
+                buildWorkspaceServiceWithConnectors(),
+                new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                buildProcessor(),
+                cfg,
+                buildAdapters(),
+                storage
+        );
+
+        Map<String, Object> generated = Map.of(
+                "serviceId", "vm-dev-dry",
+                "externalRestServicePreset", Map.of("id", "vm-dev-dry", "baseUrl", "https://visitmanager.local"),
+                "scripts", List.of(
+                        Map.of(
+                                "scriptId", "openapi-vm-dev-dry-get-queues",
+                                "saveScriptRequest", Map.of(
+                                        "scriptId", "openapi-vm-dev-dry-get-queues",
+                                        "type", "VISIT_MANAGER_ACTION",
+                                        "scriptBody", "return [ok: true]",
+                                        "description", "dry-run"
+                                )
+                        )
+                )
+        );
+
+        Map<String, Object> applied = service.execute("APPLY_OPENAPI_REST_CLIENTS_TOOLKIT", Map.of(
+                "generated", generated,
+                "replaceExisting", false,
+                "dryRun", true
+        ), "tester");
+
+        Assertions.assertEquals("APPLY_OPENAPI_REST_CLIENTS_TOOLKIT", applied.get("operation"));
+        Assertions.assertEquals(true, applied.get("dryRun"));
+        Assertions.assertEquals(1, applied.get("appliedExternalRestServices"));
+        Assertions.assertEquals(1, applied.get("savedScripts"));
+        Assertions.assertEquals(List.of(), applied.get("invalidScripts"));
+        Map<String, Object> preview = cast(applied.get("preview"));
+        Map<String, Object> summary = cast(preview.get("summary"));
+        Assertions.assertEquals(1, summary.get("scriptsWillSave"));
+        Assertions.assertEquals(true, summary.get("externalRestServiceWillApply"));
+        Assertions.assertTrue(cfg.getProgrammableApi().getExternalRestServices().isEmpty(), "dry-run не должен менять runtime services");
+        Assertions.assertNull(storage.get("openapi-vm-dev-dry-get-queues"), "dry-run не должен сохранять скрипты");
     }
 
     @Test
