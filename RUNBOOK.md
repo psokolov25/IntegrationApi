@@ -52,7 +52,7 @@
   - `POST /api/program/studio/settings/import` (restore/merge настроек IDE через GUI payload).
   - `GET /api/program/studio/capabilities` (доступные темы/лимиты и путь персистентности настроек).
   - `GET /api/program/studio/operations/catalog` (каталог операций и templates параметров для GUI).
-- `POST /api/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_HTTP_PROCESSING_PROFILE`, `IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW`, `IMPORT_HTTP_PROCESSING_PROFILE_APPLY`, `PREVIEW_HTTP_PROCESSING`, `PREVIEW_HTTP_PROCESSING_MATRIX`, `PREVIEW_CONNECTOR_PROFILE`, `VALIDATE_CONNECTOR_CONFIG`, `EXPORT_CONNECTOR_PRESETS`, `IMPORT_CONNECTOR_PRESETS_PREVIEW`, `IMPORT_CONNECTOR_PRESETS_DIFF`, `IMPORT_CONNECTOR_PRESETS_APPLY`, `EXPORT_INTEGRATION_CONNECTOR_BUNDLE`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
+- `POST /api/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `EXPORT_DEBUG_HISTORY`, `IMPORT_DEBUG_HISTORY_PREVIEW`, `IMPORT_DEBUG_HISTORY_APPLY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_HTTP_PROCESSING_PROFILE`, `IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW`, `IMPORT_HTTP_PROCESSING_PROFILE_APPLY`, `PREVIEW_HTTP_PROCESSING`, `PREVIEW_HTTP_PROCESSING_MATRIX`, `PREVIEW_CONNECTOR_PROFILE`, `PROBE_EXTERNAL_REST_SERVICE`, `VALIDATE_GROOVY_SCRIPT_BODY`, `VALIDATE_CONNECTOR_CONFIG`, `EXPORT_CONNECTOR_PRESETS`, `IMPORT_CONNECTOR_PRESETS_PREVIEW`, `IMPORT_CONNECTOR_PRESETS_DIFF`, `IMPORT_CONNECTOR_PRESETS_APPLY`, `EXPORT_INTEGRATION_CONNECTOR_BUNDLE`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
 - Каталоги коннекторов/типов:
   - `GET /api/program/connectors/catalog` (включая `supportedBrokerProfiles` с property templates);
   - `GET /api/program/connectors/broker-types` (типы + профили для GUI форм настройки).
@@ -180,7 +180,8 @@
 - Для `VISIT_*` события с одинаковым `occurredAt`, но разными `eventId`, считаются независимыми и должны обрабатываться (при условии вне debounce-окна).
 - Для `VISIT_*` debounce/out-of-order трекинг очищает устаревшие ключи автоматически (retention = `max(1 минута, debounce * 10)`); при редких событиях по филиалу после паузы это штатное поведение и не требует ручной очистки.
 - Для `VISIT_*` поддерживаются как плоские поля (`branchId`, `visitManagerId`), так и вложенные варианты (`data.branch.id`, `data.visit.branch.id`, `data.entities[*].visit.branch.id`, `data.meta.visitManagerId`, snake_case), поэтому при интеграции с DataBus проверять фактическую вложенность `meta/data/...`.
-- Для `VISIT_*`, если envelope не содержит `eventId/occurredAt`, handler использует fallback из payload (`eventId`, `data.visit.eventId`, `visit.eventId`, `occurredAt`, `data.meta.occurredAt`, `data.visit.occurredAt`, `timestamp`) — это критично для корректного dedupe и out-of-order контроля при проксировании через внешние шины.
+- Для `VISIT_*`, если envelope не содержит `eventId/occurredAt`, handler использует fallback из payload (`eventId`, `event_id`, `data.eventId`, `data.visit.eventId`, `visit.eventId`, `occurredAt`, `occurred_at`, `data.meta.occurredAt`, `data.visit.occurredAt`, `timestamp`) — это критично для корректного dedupe и out-of-order контроля при проксировании через внешние шины.
+- Для `VISIT_*` source `visitManagerId` по умолчанию также извлекается из `meta.targetVisitManagerId`/`metadata.targetVisitManagerId` и `data.meta.targetVisitManagerId`; при проксировании через DataBus это позволяет сохранить корректный контур без ручного override paths.
 - Для `branch-state-updated`/`ENTITY_CHANGED` поле `updatedAt` можно передавать как ISO-8601, так и epoch (`seconds`/`millis`); при нестабильном формате времени на стороне источника рекомендуется унифицировать его до ISO-8601.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
 - Для точечного восстановления обработать событие через `POST /api/events/replay-dlq/{eventId}`.
@@ -208,6 +209,16 @@
   `GET /api/program/connectors/catalog` и сверять `supportedBrokerProfiles` (type/description/propertyTemplate).
 - Для точечного предпросмотра конкретного типа шины использовать
   `POST /api/program/studio/operations` с `operation=PREVIEW_CONNECTOR_PROFILE` и `brokerType`.
+- Для быстрой сетевой диагностики внешнего REST-сервиса из GUI/IDE (без исполнения бизнес-скрипта) использовать
+  `POST /api/program/studio/operations` с `operation=PROBE_EXTERNAL_REST_SERVICE`
+  (`serviceId`, `path`, `method=GET|HEAD|OPTIONS`, `timeoutMillis`, `headers`).
+- Для быстрой проверки синтаксиса черновика Groovy-скрипта в IDE/GUI до сохранения/импорта использовать
+  `POST /api/program/studio/operations` с `operation=VALIDATE_GROOVY_SCRIPT_BODY`
+  (`type`, `scriptBody`), в ответе доступны `bindingHints` для выбранного типа скрипта.
+- Для backup/restore истории отладки скриптов (debug/execute) в GUI использовать:
+  - `operation=EXPORT_DEBUG_HISTORY` (`scriptId`, `limit`, `redactSensitive=true|false`, по умолчанию true — маскирует `token/password/secret/apiKey/authorization`);
+  - `operation=IMPORT_DEBUG_HISTORY_PREVIEW` (валидация entries без изменений runtime);
+  - `operation=IMPORT_DEBUG_HISTORY_APPLY` (`replaceExisting`, `entries`) для импорта истории в IDE runtime.
 - Для синхронизации Groovy REST-клиентов с актуальным OpenAPI внешнего сервиса (например, VisitManager) использовать
   `POST /api/program/studio/operations` с `operation=GENERATE_OPENAPI_REST_CLIENTS`
   (`openApiUrl` + опциональный `serviceId`), затем использовать `generated.toolkit`:

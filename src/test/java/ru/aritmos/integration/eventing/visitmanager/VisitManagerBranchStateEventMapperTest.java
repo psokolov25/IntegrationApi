@@ -222,6 +222,37 @@ class VisitManagerBranchStateEventMapperTest {
     }
 
     @Test
+    void shouldMapVisitEventFromDatabusEnvelopeWithDefaultPaths() {
+        IntegrationEvent event = new IntegrationEvent(
+                "evt-envelope-903",
+                "VISIT_SET_PARAMETER_MAP",
+                "vm-source-fallback",
+                Instant.parse("2026-04-10T11:15:30Z"),
+                Map.of(
+                        "event_id", "evt-canonical-903",
+                        "timestamp", "2026-04-10T11:15:00Z",
+                        "meta", Map.of("targetVisitManagerId", "vm-main-903"),
+                        "data", Map.of(
+                                "entities", List.of(
+                                        Map.of(
+                                                "visit", Map.of(
+                                                        "branch", Map.of("id", "BR-ENTITY-903")
+                                                )
+                                        )
+                                )
+                        )
+                )
+        );
+
+        VisitManagerVisitEventPayload payload = mapper.mapVisitEvent(event);
+        Assertions.assertEquals("vm-main-903", payload.sourceVisitManagerId());
+        Assertions.assertEquals("BR-ENTITY-903", payload.branchId());
+        Assertions.assertEquals("evt-canonical-903", payload.canonicalEventId());
+        Assertions.assertEquals(Instant.parse("2026-04-10T11:15:00Z"), payload.occurredAt());
+        Assertions.assertEquals("VISIT_SET_PARAMETER_MAP", payload.visitEventType());
+    }
+
+    @Test
     void shouldRecognizeAndMapEntityChangedBranchPayload() {
         IntegrationEvent event = new IntegrationEvent(
                 "evt-vm-4",

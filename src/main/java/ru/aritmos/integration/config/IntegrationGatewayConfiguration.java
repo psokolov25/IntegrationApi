@@ -730,26 +730,45 @@ public class IntegrationGatewayConfiguration {
                 "visit.branchId",
                 "visit.branch.id",
                 "data.visit.branchId",
-                "data.visit.branch.id"
+                "data.visit.branch.id",
+                "data.branch.id",
+                "data.branchId",
+                "branchId",
+                "branch_id",
+                "data.entities.*.visit.branch.id",
+                "data.entities.*.branch.id"
         );
         private List<String> visitManagerIdPaths = List.of(
                 "meta.visitManagerId",
+                "meta.targetVisitManagerId",
+                "metadata.visitManagerId",
+                "metadata.targetVisitManagerId",
                 "data.meta.visitManagerId",
-                "visitManagerId"
+                "data.meta.targetVisitManagerId",
+                "data.visitManagerId",
+                "data.targetVisitManagerId",
+                "visitManagerId",
+                "targetVisitManagerId",
+                "target_visit_manager_id"
         );
         private List<String> occurredAtPaths = List.of(
                 "visit.occurredAt",
                 "data.visit.occurredAt",
                 "meta.occurredAt",
                 "data.meta.occurredAt",
-                "occurredAt"
+                "data.timestamp",
+                "timestamp",
+                "occurredAt",
+                "occurred_at"
         );
         private List<String> eventIdPaths = List.of(
                 "visit.eventId",
                 "data.visit.eventId",
                 "meta.eventId",
                 "data.meta.eventId",
-                "eventId"
+                "data.eventId",
+                "eventId",
+                "event_id"
         );
 
         public List<String> getBranchIdPaths() {

@@ -76,6 +76,88 @@ class StudioOperationsServiceTest {
     }
 
     @Test
+    void shouldExportPreviewAndApplyDebugHistoryOperations(@TempDir Path tempDir) {
+        ScriptDebugHistoryService debugHistory = new ScriptDebugHistoryService();
+        debugHistory.record(new ScriptDebugHistoryService.DebugEntry(
+                "script-a",
+                Instant.parse("2026-03-01T10:00:00Z"),
+                12,
+                true,
+                Map.of("ok", true),
+                "",
+                Map.of("payload", "x"),
+                Map.of("p", 1),
+                Map.of("traceId", "t-1")
+        ));
+
+        StudioOperationsService service = new StudioOperationsService(
+                buildDispatcher(),
+                debugHistory,
+                buildWorkspaceService(),
+                new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                buildProcessor(),
+                new IntegrationGatewayConfiguration(),
+                buildAdapters()
+        );
+
+        Map<String, Object> exported = service.execute("EXPORT_DEBUG_HISTORY", Map.of("scriptId", "script-a", "limit", 10), "tester");
+        Assertions.assertEquals("EXPORT_DEBUG_HISTORY", exported.get("operation"));
+        Assertions.assertEquals(1, exported.get("total"));
+        List<Map<String, Object>> entries = castListOfMaps(exported.get("entries"));
+        Assertions.assertEquals("script-a", entries.get(0).get("scriptId"));
+
+        Map<String, Object> preview = service.execute("IMPORT_DEBUG_HISTORY_PREVIEW", Map.of("entries", entries), "tester");
+        Assertions.assertEquals("IMPORT_DEBUG_HISTORY_PREVIEW", preview.get("operation"));
+        Assertions.assertEquals(true, preview.get("valid"));
+
+        Map<String, Object> apply = service.execute("IMPORT_DEBUG_HISTORY_APPLY", Map.of(
+                "replaceExisting", true,
+                "entries", entries
+        ), "tester");
+        Assertions.assertEquals("IMPORT_DEBUG_HISTORY_APPLY", apply.get("operation"));
+        Assertions.assertEquals(true, apply.get("applied"));
+        Assertions.assertEquals(1, apply.get("imported"));
+    }
+
+    @Test
+    void shouldRedactSensitiveFieldsInExportDebugHistory(@TempDir Path tempDir) {
+        ScriptDebugHistoryService debugHistory = new ScriptDebugHistoryService();
+        debugHistory.record(new ScriptDebugHistoryService.DebugEntry(
+                "script-secure",
+                Instant.parse("2026-03-01T10:05:00Z"),
+                9,
+                true,
+                Map.of("apiToken", "t-123"),
+                "",
+                Map.of("password", "p-1", "profile", Map.of("secretKey", "k-1")),
+                Map.of("authorization", "Bearer abc"),
+                Map.of("safe", "ok")
+        ));
+
+        StudioOperationsService service = new StudioOperationsService(
+                buildDispatcher(),
+                debugHistory,
+                buildWorkspaceService(),
+                new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                buildProcessor(),
+                new IntegrationGatewayConfiguration(),
+                buildAdapters()
+        );
+
+        Map<String, Object> exported = service.execute("EXPORT_DEBUG_HISTORY", Map.of(
+                "scriptId", "script-secure",
+                "limit", 10,
+                "redactSensitive", true
+        ), "tester");
+        List<Map<String, Object>> entries = castListOfMaps(exported.get("entries"));
+        Map<String, Object> first = entries.get(0);
+        Assertions.assertEquals("***", cast(first.get("payload")).get("password"));
+        Assertions.assertEquals("***", cast(cast(first.get("payload")).get("profile")).get("secretKey"));
+        Assertions.assertEquals("***", cast(first.get("parameters")).get("authorization"));
+        Assertions.assertEquals("***", cast(first.get("result")).get("apiToken"));
+    }
+
+    @Test
     void shouldRejectUnsupportedOperation(@TempDir Path tempDir) {
         StudioOperationsService service = new StudioOperationsService(
                 buildDispatcher(),
@@ -264,6 +346,49 @@ class StudioOperationsServiceTest {
         Assertions.assertTrue(snapshot.containsKey("branchStateCache"));
         Assertions.assertTrue(snapshot.containsKey("externalServices"));
         Assertions.assertTrue(snapshot.containsKey("runtimeSettings"));
+    }
+
+    @Test
+    void shouldProbeExternalRestServiceOperation(@TempDir Path tempDir) throws IOException {
+        com.sun.net.httpserver.HttpServer server = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/health", exchange -> {
+            byte[] body = "{\"status\":\"UP\"}".getBytes();
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+            IntegrationGatewayConfiguration.ExternalRestServiceSettings rest = new IntegrationGatewayConfiguration.ExternalRestServiceSettings();
+            rest.setId("crm");
+            rest.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort());
+            cfg.getProgrammableApi().setExternalRestServices(List.of(rest));
+
+            StudioOperationsService service = new StudioOperationsService(
+                    buildDispatcher(),
+                    new ScriptDebugHistoryService(),
+                    new StudioWorkspaceService(cfg, new EventInboxService(), new EventOutboxService(),
+                            new InMemoryGroovyScriptStorage(), new ScriptDebugHistoryService(), List.of()),
+                    new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                    buildProcessor(),
+                    cfg,
+                    buildAdapters()
+            );
+
+            Map<String, Object> result = service.execute("PROBE_EXTERNAL_REST_SERVICE",
+                    Map.of("serviceId", "crm", "path", "/health", "method", "GET", "timeoutMillis", 1500),
+                    "tester");
+            Assertions.assertEquals("PROBE_EXTERNAL_REST_SERVICE", result.get("operation"));
+            Map<String, Object> probe = cast(result.get("probe"));
+            Assertions.assertEquals(true, probe.get("ok"));
+            Assertions.assertEquals("UP", probe.get("status"));
+            Assertions.assertEquals(200, probe.get("statusCode"));
+        } finally {
+            server.stop(0);
+        }
     }
 
     @Test
@@ -547,6 +672,8 @@ class StudioOperationsServiceTest {
             Assertions.assertEquals("APPLY_OPENAPI_REST_CLIENTS_TOOLKIT", applied.get("operation"));
             Assertions.assertEquals(1, applied.get("appliedExternalRestServices"));
             Assertions.assertEquals(1, applied.get("savedScripts"));
+            Assertions.assertEquals(0, applied.get("skippedExistingScripts"));
+            Assertions.assertEquals(List.of(), applied.get("invalidScripts"));
             Assertions.assertEquals("visit-manager-dev",
                     cfg.getProgrammableApi().getExternalRestServices().get(0).getId());
         } finally {
@@ -605,6 +732,75 @@ class StudioOperationsServiceTest {
         Assertions.assertEquals(2L, summary.get("restServicesConflictsWithExisting"));
         Assertions.assertEquals(1, summary.get("restServicesDuplicatesInImport"));
         Assertions.assertEquals(false, summary.get("importable"));
+    }
+
+    @Test
+    void shouldSkipInvalidGeneratedGroovyScriptsWhenApplyingToolkit(@TempDir Path tempDir) {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        StudioOperationsService service = new StudioOperationsService(
+                buildDispatcher(),
+                new ScriptDebugHistoryService(),
+                buildWorkspaceServiceWithConnectors(),
+                new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                buildProcessor(),
+                cfg,
+                buildAdapters(),
+                new InMemoryGroovyScriptStorage()
+        );
+
+        Map<String, Object> generated = Map.of(
+                "serviceId", "vm-dev",
+                "externalRestServicePreset", Map.of("id", "vm-dev", "baseUrl", "https://visitmanager.local"),
+                "scripts", List.of(
+                        Map.of(
+                                "scriptId", "broken-script",
+                                "saveScriptRequest", Map.of(
+                                        "scriptId", "broken-script",
+                                        "type", "VISIT_MANAGER_ACTION",
+                                        "scriptBody", "return [broken: true",
+                                        "description", "broken"
+                                )
+                        )
+                )
+        );
+
+        Map<String, Object> applied = service.execute("APPLY_OPENAPI_REST_CLIENTS_TOOLKIT", Map.of(
+                "generated", generated,
+                "replaceExisting", false
+        ), "tester");
+        Assertions.assertEquals("APPLY_OPENAPI_REST_CLIENTS_TOOLKIT", applied.get("operation"));
+        Assertions.assertEquals(0, applied.get("savedScripts"));
+        List<Map<String, Object>> invalid = castListOfMaps(applied.get("invalidScripts"));
+        Assertions.assertEquals(1, invalid.size());
+        Assertions.assertEquals("broken-script", invalid.get(0).get("scriptId"));
+    }
+
+    @Test
+    void shouldValidateGroovyScriptBodyViaStudioOperation(@TempDir Path tempDir) {
+        StudioOperationsService service = new StudioOperationsService(
+                buildDispatcher(),
+                new ScriptDebugHistoryService(),
+                buildWorkspaceServiceWithConnectors(),
+                new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                buildProcessor(),
+                new IntegrationGatewayConfiguration(),
+                buildAdapters()
+        );
+
+        Map<String, Object> valid = service.execute("VALIDATE_GROOVY_SCRIPT_BODY", Map.of(
+                "type", "VISIT_MANAGER_ACTION",
+                "scriptBody", "return [ok: true]"
+        ), "tester");
+        Assertions.assertEquals("VALIDATE_GROOVY_SCRIPT_BODY", valid.get("operation"));
+        Assertions.assertEquals(true, valid.get("ok"));
+        Assertions.assertTrue(((List<?>) valid.get("bindingHints")).contains("visitManagerInvoker"));
+
+        Map<String, Object> invalid = service.execute("VALIDATE_GROOVY_SCRIPT_BODY", Map.of(
+                "type", "VISIT_MANAGER_ACTION",
+                "scriptBody", "return [oops: true"
+        ), "tester");
+        Assertions.assertEquals(false, invalid.get("ok"));
+        Assertions.assertTrue(String.valueOf(invalid.get("message")).length() > 5);
     }
 
     @Test

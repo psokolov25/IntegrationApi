@@ -125,10 +125,10 @@ integration:
       updated-by-paths: ["data.state.updatedBy", "data.updatedBy", "data.entity.state.updatedBy", "data.entity.updatedBy", "updatedBy", "updated_by"]
       visit-manager-id-paths: ["meta.visitManagerId", "meta.targetVisitManagerId", "metadata.visitManagerId", "metadata.targetVisitManagerId", "data.meta.visitManagerId", "data.meta.targetVisitManagerId", "data.visitManagerId", "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"]
     visit-event-mapping:
-      branch-id-paths: ["visit.branchId", "visit.branch.id", "data.visit.branchId", "data.visit.branch.id"]
-      visit-manager-id-paths: ["meta.visitManagerId", "data.meta.visitManagerId", "visitManagerId"]
-      occurred-at-paths: ["visit.occurredAt", "data.visit.occurredAt", "meta.occurredAt", "data.meta.occurredAt", "occurredAt"]
-      event-id-paths: ["visit.eventId", "data.visit.eventId", "meta.eventId", "data.meta.eventId", "eventId"]
+      branch-id-paths: ["visit.branchId", "visit.branch.id", "data.visit.branchId", "data.visit.branch.id", "data.branch.id", "data.branchId", "branchId", "branch_id", "data.entities.*.visit.branch.id", "data.entities.*.branch.id"]
+      visit-manager-id-paths: ["meta.visitManagerId", "meta.targetVisitManagerId", "metadata.visitManagerId", "metadata.targetVisitManagerId", "data.meta.visitManagerId", "data.meta.targetVisitManagerId", "data.visitManagerId", "data.targetVisitManagerId", "visitManagerId", "targetVisitManagerId", "target_visit_manager_id"]
+      occurred-at-paths: ["visit.occurredAt", "data.visit.occurredAt", "meta.occurredAt", "data.meta.occurredAt", "data.timestamp", "timestamp", "occurredAt", "occurred_at"]
+      event-id-paths: ["visit.eventId", "data.visit.eventId", "meta.eventId", "data.meta.eventId", "data.eventId", "eventId", "event_id"]
   queue-cache-ttl: 30s
   aggregate-max-branches: 200
   aggregate-request-timeout-millis: 3000
