@@ -10,11 +10,11 @@
    - при изменениях структуры VISIT_* payload перенастроить `integration.eventing.visit-event-mapping.*` (без рекомпиляции сервиса).
    - `integration.branch-routing` и `integration.branch-fallback-routing`;
    - `integration.branch-state-cache-ttl`, `integration.branch-state-event-refresh-debounce`;
-   - `integration.aggregate-max-branches` (лимит количества **уникальных** `branchIds` после нормализации в `GET /api/v2/queues/aggregate`);
-   - `integration.aggregate-request-timeout-millis` (timeout fan-out для `GET /api/v2/queues/aggregate`);
+   - `integration.aggregate-max-branches` (лимит количества **уникальных** `branchIds` после нормализации в `GET /api/queues/aggregate`);
+   - `integration.aggregate-request-timeout-millis` (timeout fan-out для `GET /api/queues/aggregate`);
    - `integration.eventing.entity-changed-branch-mapping.*` (eventType/class/paths для гибкого маппинга `ENTITY_CHANGED` → branch-state).
    - при включении подчиненной шины DataBus (Kafka listener): `integration.eventing.kafka.enabled`, `integration.eventing.kafka.bootstrap-servers`, `integration.eventing.kafka.consumer-group`, `integration.eventing.kafka.auto-offset-reset`, `integration.eventing.kafka.poll-timeout-millis`, `integration.eventing.kafka.inbound-topic`.
-3. Проверить branch-state API (`/api/v2/branches/*`) и eventing pipeline (`/api/v2/events/*`).
+3. Проверить branch-state API (`/api/branches/*`) и eventing pipeline (`/api/events/*`).
 4. При проблемах консистентности branch-state:
    - проверить корректность DataBus payload;
    - проверить маппинг `VisitManagerBranchStateEventMapper`;
@@ -36,38 +36,38 @@
   - `UP` — аппаратных ограничений не потребовалось;
   - `DEGRADED` — для защиты от подвисания и перегрузки соседних служб автоматически снижены runtime-лимиты.
 - Итоговый readiness становится `DEGRADED`, если любой компонент имеет `DOWN` или `DEGRADED`.
-- Gateway API: `/api/v2/queues`, `/api/v2/queues/aggregate`
+- Gateway API: `/api/queues`, `/api/queues/aggregate`
 - Branch-state API:
-  - `GET /api/v2/branches/{branchId}/state`
-  - `POST /api/v2/branches/{branchId}/state/refresh`
-  - `PUT /api/v2/branches/{branchId}/state`
-  - `GET /api/v2/branches/states`
-- Programmable: `POST /api/v2/program/{endpointId}`
-- Programmable Studio bootstrap: `GET /api/v2/program/studio/bootstrap?debugHistoryLimit=20` (для GUI/IDE редактора: runtime, inbox/outbox, connectors, settings, tabs, `editorSettings`, `editorCapabilities`, `gui.actions`).
-- Programmable Studio dashboard: `GET /api/v2/program/studio/dashboard?debugHistoryLimit=20` (сводный GUI snapshot + connectors health + VisitManager metrics).
+  - `GET /api/branches/{branchId}/state`
+  - `POST /api/branches/{branchId}/state/refresh`
+  - `PUT /api/branches/{branchId}/state`
+  - `GET /api/branches/states`
+- Programmable: `POST /api/program/{endpointId}`
+- Programmable Studio bootstrap: `GET /api/program/studio/bootstrap?debugHistoryLimit=20` (для GUI/IDE редактора: runtime, inbox/outbox, connectors, settings, tabs, `editorSettings`, `editorCapabilities`, `gui.actions`).
+- Programmable Studio dashboard: `GET /api/program/studio/dashboard?debugHistoryLimit=20` (сводный GUI snapshot + connectors health + VisitManager metrics).
 - IDE editor settings API:
-  - `GET /api/v2/program/studio/settings`
-  - `PUT /api/v2/program/studio/settings` (theme/fontSize/autoSave/wordWrap/lastScriptId).
-  - `GET /api/v2/program/studio/settings/export` (backup настроек IDE по всем subject).
-  - `POST /api/v2/program/studio/settings/import` (restore/merge настроек IDE через GUI payload).
-  - `GET /api/v2/program/studio/capabilities` (доступные темы/лимиты и путь персистентности настроек).
-  - `GET /api/v2/program/studio/operations/catalog` (каталог операций и templates параметров для GUI).
-- `POST /api/v2/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_HTTP_PROCESSING_PROFILE`, `IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW`, `IMPORT_HTTP_PROCESSING_PROFILE_APPLY`, `PREVIEW_HTTP_PROCESSING`, `PREVIEW_HTTP_PROCESSING_MATRIX`, `PREVIEW_CONNECTOR_PROFILE`, `VALIDATE_CONNECTOR_CONFIG`, `EXPORT_CONNECTOR_PRESETS`, `IMPORT_CONNECTOR_PRESETS_PREVIEW`, `IMPORT_CONNECTOR_PRESETS_DIFF`, `IMPORT_CONNECTOR_PRESETS_APPLY`, `EXPORT_INTEGRATION_CONNECTOR_BUNDLE`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
+  - `GET /api/program/studio/settings`
+  - `PUT /api/program/studio/settings` (theme/fontSize/autoSave/wordWrap/lastScriptId).
+  - `GET /api/program/studio/settings/export` (backup настроек IDE по всем subject).
+  - `POST /api/program/studio/settings/import` (restore/merge настроек IDE через GUI payload).
+  - `GET /api/program/studio/capabilities` (доступные темы/лимиты и путь персистентности настроек).
+  - `GET /api/program/studio/operations/catalog` (каталог операций и templates параметров для GUI).
+- `POST /api/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_HTTP_PROCESSING_PROFILE`, `IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW`, `IMPORT_HTTP_PROCESSING_PROFILE_APPLY`, `PREVIEW_HTTP_PROCESSING`, `PREVIEW_HTTP_PROCESSING_MATRIX`, `PREVIEW_CONNECTOR_PROFILE`, `VALIDATE_CONNECTOR_CONFIG`, `EXPORT_CONNECTOR_PRESETS`, `IMPORT_CONNECTOR_PRESETS_PREVIEW`, `IMPORT_CONNECTOR_PRESETS_DIFF`, `IMPORT_CONNECTOR_PRESETS_APPLY`, `EXPORT_INTEGRATION_CONNECTOR_BUNDLE`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
 - Каталоги коннекторов/типов:
-  - `GET /api/v2/program/connectors/catalog` (включая `supportedBrokerProfiles` с property templates);
-  - `GET /api/v2/program/connectors/broker-types` (типы + профили для GUI форм настройки).
-  - `POST /api/v2/program/connectors/crm/identify-client` (поиск клиента во внешней CRM по строке идентификатора).
-  - `POST /api/v2/program/connectors/crm/medical-services` (получение перечня доступных медуслуг по идентификатору клиента).
-  - `POST /api/v2/program/connectors/crm/prebooking` (получение данных о предварительной записи по идентификатору клиента).
+  - `GET /api/program/connectors/catalog` (включая `supportedBrokerProfiles` с property templates);
+  - `GET /api/program/connectors/broker-types` (типы + профили для GUI форм настройки).
+  - `POST /api/program/connectors/crm/identify-client` (поиск клиента во внешней CRM по строке идентификатора).
+  - `POST /api/program/connectors/crm/medical-services` (получение перечня доступных медуслуг по идентификатору клиента).
+  - `POST /api/program/connectors/crm/prebooking` (получение данных о предварительной записи по идентификатору клиента).
 
 - ITS (integration templates) для programmable handlers:
-  - Предпросмотр: `POST /api/v2/program/templates/import/preview` (multipart `archive`).
-  - Импорт: `POST /api/v2/program/templates/import` (multipart `archive` + JSON `parameterValues` + `replaceExisting`).
-  - Экспорт: `POST /api/v2/program/templates/export` (выгрузка `.its`).
+  - Предпросмотр: `POST /api/program/templates/import/preview` (multipart `archive`).
+  - Импорт: `POST /api/program/templates/import` (multipart `archive` + JSON `parameterValues` + `replaceExisting`).
+  - Экспорт: `POST /api/program/templates/export` (выгрузка `.its`).
   - Формат placeholder в Groovy: `{{paramKey}}`; значения берутся из `parameterValues` и/или `defaultValue` в `template.yml`.
 - Расширенное выполнение скриптов:
-  - `POST /api/v2/program/scripts/{scriptId}/execute-advanced`
-  - `POST /api/v2/program/scripts/{scriptId}/debug-advanced`
+  - `POST /api/program/scripts/{scriptId}/execute-advanced`
+  - `POST /api/program/scripts/{scriptId}/debug-advanced`
   - `parameters` передаются в Groovy binding как `params`/`parameters`, `context` доступен как `context`.
 - Персистентное хранилище Groovy-скриптов:
   - `integration.programmable-api.script-storage.file.enabled=true`;
@@ -81,38 +81,38 @@
   - `integration.eventing.outbox-backoff-seconds`;
   - `integration.eventing.outbox-max-attempts` (после превышения статус outbox -> `DEAD`);
   - `integration.eventing.outbox-auto-flush-enabled` + `integration.eventing.outbox-auto-flush-batch-size` + `integration.eventing.outbox-auto-flush-interval` (фоновый flush pending/failed outbox);
-  - `integration.eventing.inbox-processing-timeout-seconds` + endpoint `POST /api/v2/events/inbox/recover-stale`.
+  - `integration.eventing.inbox-processing-timeout-seconds` + endpoint `POST /api/events/inbox/recover-stale`.
 - Programmable Groovy scripts:
-  - `PUT /api/v2/program/scripts/{scriptId}`
-  - `GET /api/v2/program/scripts/{scriptId}`
-  - `DELETE /api/v2/program/scripts/{scriptId}`
-  - `POST /api/v2/program/scripts/{scriptId}/execute`
-  - `POST /api/v2/program/messages/inbound`
-- Eventing ingestion: `POST /api/v2/events/ingest`
-- Eventing replay: `POST /api/v2/events/replay/{eventId}`
-- Eventing DLQ replay: `POST /api/v2/events/replay-dlq/{eventId}`
-- Eventing DLQ bulk replay: `POST /api/v2/events/replay-dlq?limit=100`
-- Eventing DLQ: `GET /api/v2/events/dlq`
-- Eventing DLQ by id: `GET /api/v2/events/dlq/{eventId}`
-- Eventing DLQ remove: `DELETE /api/v2/events/dlq/{eventId}`
-- Eventing DLQ clear: `DELETE /api/v2/events/dlq`
-- Eventing processed store: `GET /api/v2/events/processed`, `GET /api/v2/events/processed/{eventId}`
-- Eventing processed clear: `DELETE /api/v2/events/processed`
-- Eventing outbox snapshot: `GET /api/v2/events/outbox`, `GET /api/v2/events/outbox/{eventId}`
-- Eventing outbox flush: `POST /api/v2/events/outbox/flush?limit=100`
-- Eventing stats: `GET /api/v2/events/stats`
-- Eventing health: `GET /api/v2/events/stats/health`
-- Eventing stats reset: `DELETE /api/v2/events/stats`
-- Eventing maintenance preview: `GET /api/v2/events/maintenance/preview`
-- Eventing maintenance run: `POST /api/v2/events/maintenance/run`
-- Eventing snapshot export: `GET /api/v2/events/export`
-- Eventing snapshot import: `POST /api/v2/events/import?clearBeforeImport=false`
-- Eventing snapshot import preview: `POST /api/v2/events/import/preview?clearBeforeImport=false&strictPolicies=true`
-- Eventing snapshot validate: `POST /api/v2/events/import/validate?strictPolicies=true`
-- Eventing snapshot analyze: `POST /api/v2/events/import/analyze?clearBeforeImport=false&strictPolicies=true`
-- Eventing capabilities: `GET /api/v2/events/capabilities`
-- Eventing limits: `GET /api/v2/events/limits`
-- Eventing version: `GET /api/v2/events/version`
+  - `PUT /api/program/scripts/{scriptId}`
+  - `GET /api/program/scripts/{scriptId}`
+  - `DELETE /api/program/scripts/{scriptId}`
+  - `POST /api/program/scripts/{scriptId}/execute`
+  - `POST /api/program/messages/inbound`
+- Eventing ingestion: `POST /api/events/ingest`
+- Eventing replay: `POST /api/events/replay/{eventId}`
+- Eventing DLQ replay: `POST /api/events/replay-dlq/{eventId}`
+- Eventing DLQ bulk replay: `POST /api/events/replay-dlq?limit=100`
+- Eventing DLQ: `GET /api/events/dlq`
+- Eventing DLQ by id: `GET /api/events/dlq/{eventId}`
+- Eventing DLQ remove: `DELETE /api/events/dlq/{eventId}`
+- Eventing DLQ clear: `DELETE /api/events/dlq`
+- Eventing processed store: `GET /api/events/processed`, `GET /api/events/processed/{eventId}`
+- Eventing processed clear: `DELETE /api/events/processed`
+- Eventing outbox snapshot: `GET /api/events/outbox`, `GET /api/events/outbox/{eventId}`
+- Eventing outbox flush: `POST /api/events/outbox/flush?limit=100`
+- Eventing stats: `GET /api/events/stats`
+- Eventing health: `GET /api/events/stats/health`
+- Eventing stats reset: `DELETE /api/events/stats`
+- Eventing maintenance preview: `GET /api/events/maintenance/preview`
+- Eventing maintenance run: `POST /api/events/maintenance/run`
+- Eventing snapshot export: `GET /api/events/export`
+- Eventing snapshot import: `POST /api/events/import?clearBeforeImport=false`
+- Eventing snapshot import preview: `POST /api/events/import/preview?clearBeforeImport=false&strictPolicies=true`
+- Eventing snapshot validate: `POST /api/events/import/validate?strictPolicies=true`
+- Eventing snapshot analyze: `POST /api/events/import/analyze?clearBeforeImport=false&strictPolicies=true`
+- Eventing capabilities: `GET /api/events/capabilities`
+- Eventing limits: `GET /api/events/limits`
+- Eventing version: `GET /api/events/version`
 
 ## Диагностика
 - Проверить `integration.eventing.enabled` и `integration.eventing.max-retries`.
@@ -161,7 +161,7 @@
 ## Инциденты
 - DLQ растет: проверить handler для `eventType` и валидацию payload.
 - Для inbound Kafka/DataBus при невалидном JSON listener формирует synthetic событие `DATABUS_INVALID_PAYLOAD` (id `invalid:<topic>:<partition>:<offset>`) и отправляет его в общий ingestion pipeline; при росте DLQ проверять `payload.error`, `payload.rawPayloadPreview` и контрольную сумму `payload.rawPayloadHash`.
-- Outbox растет: проверить доступность внешнего транспорта и выполнить `POST /api/v2/events/outbox/flush?limit=N`.
+- Outbox растет: проверить доступность внешнего транспорта и выполнить `POST /api/events/outbox/flush?limit=N`.
 - Outbox растет при активном webhook transport: проверить HTTP-ответы внешнего шлюза (ожидается 2xx), корректность `webhook.url`, timeout и auth-header/token.
 - Если webhook получает «лишние»/«чужие» события, проверить фильтрацию `integration.eventing.webhook.target-systems`
   и поле аудитории `meta.targetSystems` в payload исходного события.
@@ -183,11 +183,11 @@
 - Для `VISIT_*`, если envelope не содержит `eventId/occurredAt`, handler использует fallback из payload (`eventId`, `data.visit.eventId`, `visit.eventId`, `occurredAt`, `data.meta.occurredAt`, `data.visit.occurredAt`, `timestamp`) — это критично для корректного dedupe и out-of-order контроля при проксировании через внешние шины.
 - Для `branch-state-updated`/`ENTITY_CHANGED` поле `updatedAt` можно передавать как ISO-8601, так и epoch (`seconds`/`millis`); при нестабильном формате времени на стороне источника рекомендуется унифицировать его до ISO-8601.
 - Для проблем маршрутизации в внешние системы проверять аудитории `employee-workplace` и `reception-desk` (или явные `meta.targetSystems`).
-- Для точечного восстановления обработать событие через `POST /api/v2/events/replay-dlq/{eventId}`.
-- Для массового восстановления использовать `POST /api/v2/events/replay-dlq?limit=N`.
-- Для ручной очистки «залипших» событий использовать `DELETE /api/v2/events/dlq/{eventId}` или `DELETE /api/v2/events/dlq`.
+- Для точечного восстановления обработать событие через `POST /api/events/replay-dlq/{eventId}`.
+- Для массового восстановления использовать `POST /api/events/replay-dlq?limit=N`.
+- Для ручной очистки «залипших» событий использовать `DELETE /api/events/dlq/{eventId}` или `DELETE /api/events/dlq`.
 - Повторы событий: проверить `eventId` и inbox idempotency.
-- Для `GET /api/v2/queues/aggregate` входной список `branchIds` нормализуется (trim пробелов, пустые/`null` отбрасываются, дубликаты удаляются с сохранением порядка первого появления).
+- Для `GET /api/queues/aggregate` входной список `branchIds` нормализуется (trim пробелов, пустые/`null` отбрасываются, дубликаты удаляются с сохранением порядка первого появления).
 - При `partial=true` из-за timeout проверить `integration.aggregate-request-timeout-millis` и latency downstream VisitManager.
 - Если после нормализации `branchIds` не остается ни одного значения, endpoint возвращает `BAD_REQUEST` с подсказкой передать хотя бы один `branchId`.
 - Ошибки downstream: проверить client-policy и circuit status.
@@ -196,7 +196,7 @@
   - если `json=null`, ответ не распарсился как JSON (проверить `parse-json-body`);
   - если ответ обрезан, увеличить `response-body-max-chars`.
 - Для dry-run проверки кастомной обработки HTTP до релиза использовать
-  `POST /api/v2/program/studio/operations` с `operation=PREVIEW_HTTP_PROCESSING`
+  `POST /api/program/studio/operations` с `operation=PREVIEW_HTTP_PROCESSING`
   (параметры: `direction`, `headers`, `body`, `responseStatus`, `responseBody`, `responseHeaders`; в ответе `supportedDirections`).
 - Для сравнения обработки сразу в двух направлениях (`OUTBOUND_EXTERNAL` + `INBOUND_SUO`) использовать
   `operation=PREVIEW_HTTP_PROCESSING_MATRIX` (возвращает `directionPreviews[]` с request/response preview для каждого направления).
@@ -205,19 +205,19 @@
   - `operation=IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW` (валидация candidate-профиля, включая `directionHeaderName` и `responseBodyMaxChars`);
   - `operation=IMPORT_HTTP_PROCESSING_PROFILE_APPLY` (применение профиля после preview).
 - Для расширения/подбора интеграции с внешними шинами заказчика использовать
-  `GET /api/v2/program/connectors/catalog` и сверять `supportedBrokerProfiles` (type/description/propertyTemplate).
+  `GET /api/program/connectors/catalog` и сверять `supportedBrokerProfiles` (type/description/propertyTemplate).
 - Для точечного предпросмотра конкретного типа шины использовать
-  `POST /api/v2/program/studio/operations` с `operation=PREVIEW_CONNECTOR_PROFILE` и `brokerType`.
+  `POST /api/program/studio/operations` с `operation=PREVIEW_CONNECTOR_PROFILE` и `brokerType`.
 - Для синхронизации Groovy REST-клиентов с актуальным OpenAPI внешнего сервиса (например, VisitManager) использовать
-  `POST /api/v2/program/studio/operations` с `operation=GENERATE_OPENAPI_REST_CLIENTS`
+  `POST /api/program/studio/operations` с `operation=GENERATE_OPENAPI_REST_CLIENTS`
   (`openApiUrl` + опциональный `serviceId`), затем использовать `generated.toolkit`:
   - `connectorPresetsPreviewRequest` / `connectorPresetsApplyRequest` для регистрации REST service;
   - `scripts[*].saveScriptRequest` для пакетной загрузки скриптов в IDE/Script API.
 - Для one-shot применения сгенерированного набора (REST service + scripts) использовать
-  `POST /api/v2/program/studio/operations` с `operation=APPLY_OPENAPI_REST_CLIENTS_TOOLKIT`
+  `POST /api/program/studio/operations` с `operation=APPLY_OPENAPI_REST_CLIENTS_TOOLKIT`
   (`generated` из предыдущего шага + `replaceExisting=true|false`).
 - Перед включением нового broker в прод-контур проверять параметры через
-  `POST /api/v2/program/studio/operations` с `operation=VALIDATE_CONNECTOR_CONFIG`
+  `POST /api/program/studio/operations` с `operation=VALIDATE_CONNECTOR_CONFIG`
   (`brokerType` + `properties`) и устранять `missingRequiredProperties` и `adapterValidationErrors`
   (например, неподдерживаемый `method`, невалидный `timeoutSeconds`).
 - Для миграции/backup-конфигураций внешних коннекторов использовать:
@@ -229,12 +229,12 @@
   - `operation=EXPORT_INTEGRATION_CONNECTOR_BUNDLE` (экспорт единого bundle с секциями `httpProcessingProfile` и `connectorPresets`).
   - `operation=IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW` (комбинированный dry-run с проверкой двух секций одновременно).
   - `operation=IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY` (применение bundle после успешного preview; поддерживаются `replaceExisting` и `includeRollbackSnapshot`).
-- Для диагностики IDE/GUI редактора выполнять `GET /api/v2/program/studio/bootstrap` и сверять блоки `ide/runtime/connectors/eventing/settings/gui`.
+- Для диагностики IDE/GUI редактора выполнять `GET /api/program/studio/bootstrap` и сверять блоки `ide/runtime/connectors/eventing/settings/gui`.
 - Для CRM-кейсов клиентской идентификации (телефон/СНИЛС/ИНН и т.п.) использовать:
-  - `POST /api/v2/program/connectors/crm/identify-client` — поиск клиента во внешней CRM;
-  - `POST /api/v2/program/connectors/crm/medical-services` — доступные медицинские услуги по найденному клиенту;
-  - `POST /api/v2/program/connectors/crm/prebooking` — данные предварительной записи/предбронирования клиента.
-- Для быстрой операторской сводки использовать `GET /api/v2/program/studio/dashboard` (включает dashboard snapshot, connectors health и метрики VisitManager).
+  - `POST /api/program/connectors/crm/identify-client` — поиск клиента во внешней CRM;
+  - `POST /api/program/connectors/crm/medical-services` — доступные медицинские услуги по найденному клиенту;
+  - `POST /api/program/connectors/crm/prebooking` — данные предварительной записи/предбронирования клиента.
+- Для быстрой операторской сводки использовать `GET /api/program/studio/dashboard` (включает dashboard snapshot, connectors health и метрики VisitManager).
 - Для точечной диагностики использовать studio operations:
   - `SNAPSHOT_INBOX_OUTBOX` — срез backlog inbox/outbox с фильтрацией статуса;
   - `SNAPSHOT_VISIT_MANAGERS` — срез конфигурации VisitManager/маршрутизации;
@@ -246,9 +246,9 @@
   - `PREVIEW_EVENTING_MAINTENANCE` — dry-run очистки inbox/outbox/DLQ/processed;
   - `EXPORT_EVENTING_SNAPSHOT` — экспорт eventing snapshot для import/export сценариев;
   - `DASHBOARD_SNAPSHOT` — единый сводный snapshot GUI (workspace + inbox/outbox + VisitManagers + branch-state cache + external services + runtime settings).
-- При проблемах персонализации IDE проверить `GET/PUT /api/v2/program/studio/settings` и корректность значений (`theme=dark|light|contrast`, `fontSize=10..28`).
-- Для backup/restore GUI-настроек использовать `GET /api/v2/program/studio/settings/export` и `POST /api/v2/program/studio/settings/import` (`replaceExisting=true|false`).
-- Для GUI миграции eventing состояния использовать `GET /api/v2/events/export`, `POST /api/v2/events/import/preview`, `POST /api/v2/events/import`.
+- При проблемах персонализации IDE проверить `GET/PUT /api/program/studio/settings` и корректность значений (`theme=dark|light|contrast`, `fontSize=10..28`).
+- Для backup/restore GUI-настроек использовать `GET /api/program/studio/settings/export` и `POST /api/program/studio/settings/import` (`replaceExisting=true|false`).
+- Для GUI миграции eventing состояния использовать `GET /api/events/export`, `POST /api/events/import/preview`, `POST /api/events/import`.
 - Настройки IDE персистятся в файл `.../editor-settings.json` внутри `integration.programmable-api.script-storage.file.path` (по умолчанию `cache/program-scripts/editor-settings.json`).
 - Ошибки отправки в брокер/шину: проверить корректность `brokerId`, `topic`, тип брокера и наличие adapter-а для `message-brokers[*].type`.
 - Нет реакции на входящее сообщение: проверить matching `broker-id`/`topic`, тип скрипта `MESSAGE_BUS_REACTION` и права `programmable-script-execute`.

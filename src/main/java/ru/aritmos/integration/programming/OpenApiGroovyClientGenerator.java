@@ -78,9 +78,9 @@ public final class OpenApiGroovyClientGenerator {
                         "operationId", operationId,
                         "scriptBody", scriptApiPayload.get("scriptBody"),
                         "saveScriptRequest", scriptApiPayload,
-                        "saveScriptApi", "PUT /api/v2/program/scripts/{scriptId}",
+                        "saveScriptApi", "PUT /api/program/scripts/{scriptId}",
                         "executeAdvancedExample", Map.of(
-                                "api", "POST /api/v2/program/scripts/{scriptId}/execute-advanced",
+                                "api", "POST /api/program/scripts/{scriptId}/execute-advanced",
                                 "body", Map.of(
                                         "payload", Map.of(),
                                         "parameters", buildPathParameterExample(pathParameters, serviceId),
@@ -130,8 +130,8 @@ public final class OpenApiGroovyClientGenerator {
                         "scriptsBatch", List.copyOf(scripts)
                 ),
                 "usage", Map.of(
-                        "createScriptApi", "PUT /api/v2/program/scripts/{scriptId}",
-                        "runScriptApi", "POST /api/v2/program/scripts/{scriptId}/execute-advanced",
+                        "createScriptApi", "PUT /api/program/scripts/{scriptId}",
+                        "runScriptApi", "POST /api/program/scripts/{scriptId}/execute-advanced",
                         "requiredBinding", "externalRestClient.invoke(serviceId, method, path, body, headers)"
                 )
         );

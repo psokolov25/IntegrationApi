@@ -13,7 +13,7 @@ public record ConnectorRestInvokeRequest(
         String serviceId,
         @Schema(description = "HTTP метод", example = "POST")
         String method,
-        @Schema(description = "Путь относительно baseUrl", example = "/api/v2/events")
+        @Schema(description = "Путь относительно baseUrl", example = "/api/events")
         String path,
         @Schema(description = "JSON body", implementation = Object.class)
         Map<String, Object> body,

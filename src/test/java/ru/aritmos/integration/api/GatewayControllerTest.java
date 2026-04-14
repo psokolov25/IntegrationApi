@@ -24,7 +24,7 @@ class GatewayControllerTest {
     @Test
     void shouldRejectEmptyBranchIdsAfterNormalization() {
         GatewayController controller = controllerWithSingleVm(200);
-        HttpRequest<?> request = HttpRequest.GET("/api/v2/queues/aggregate");
+        HttpRequest<?> request = HttpRequest.GET("/api/queues/aggregate");
         RequestSecurityContext.attach(request, new SubjectPrincipal("ext-user", Set.of("queue-aggregate")));
 
         IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
@@ -35,7 +35,7 @@ class GatewayControllerTest {
     @Test
     void shouldAggregateQueuesForNormalizedBranchIds() {
         GatewayController controller = controllerWithSingleVm(200);
-        HttpRequest<?> request = HttpRequest.GET("/api/v2/queues/aggregate");
+        HttpRequest<?> request = HttpRequest.GET("/api/queues/aggregate");
         RequestSecurityContext.attach(request, new SubjectPrincipal("ext-user", Set.of("queue-aggregate")));
 
         var response = controller.aggregateQueues(request, " BR-1 , BR-1 , BR-2 ");
@@ -48,7 +48,7 @@ class GatewayControllerTest {
     @Test
     void shouldRejectWhenBranchIdsCountExceedsConfiguredLimit() {
         GatewayController controller = controllerWithSingleVm(2);
-        HttpRequest<?> request = HttpRequest.GET("/api/v2/queues/aggregate");
+        HttpRequest<?> request = HttpRequest.GET("/api/queues/aggregate");
         RequestSecurityContext.attach(request, new SubjectPrincipal("ext-user", Set.of("queue-aggregate")));
 
         IllegalArgumentException ex = Assertions.assertThrows(IllegalArgumentException.class,
@@ -59,7 +59,7 @@ class GatewayControllerTest {
     @Test
     void shouldApplyLimitAfterDeduplication() {
         GatewayController controller = controllerWithSingleVm(2);
-        HttpRequest<?> request = HttpRequest.GET("/api/v2/queues/aggregate");
+        HttpRequest<?> request = HttpRequest.GET("/api/queues/aggregate");
         RequestSecurityContext.attach(request, new SubjectPrincipal("ext-user", Set.of("queue-aggregate")));
 
         var response = controller.aggregateQueues(request, "BR-1, BR-1, BR-2, BR-2");
