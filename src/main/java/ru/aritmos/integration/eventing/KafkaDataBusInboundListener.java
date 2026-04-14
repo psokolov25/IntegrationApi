@@ -19,10 +19,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.HashMap;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -40,9 +44,7 @@ public class KafkaDataBusInboundListener {
     private final IntegrationGatewayConfiguration configuration;
     private final EventDispatcherService dispatcherService;
     private final KafkaDataBusInboundMapper inboundMapper;
-    private final AtomicBoolean running = new AtomicBoolean(false);
-    private ExecutorService executor;
-    private KafkaConsumer<String, String> consumer;
+    private final List<ListenerWorker> workers = new ArrayList<>();
 
     public KafkaDataBusInboundListener(IntegrationGatewayConfiguration configuration,
                                        EventDispatcherService dispatcherService,
@@ -64,95 +66,104 @@ public class KafkaDataBusInboundListener {
         if (!configuration.getEventing().isEnabled() || !kafka.isEnabled()) {
             return;
         }
-        if (kafka.getBootstrapServers() == null || kafka.getBootstrapServers().isBlank()) {
-            LOG.warn("KAFKA_DATABUS_LISTENER_DISABLED reason=bootstrapServers-empty");
-            return;
-        }
-        if (kafka.getInboundTopic() == null || kafka.getInboundTopic().isBlank()) {
-            LOG.warn("KAFKA_DATABUS_LISTENER_DISABLED reason=inboundTopic-empty");
+        List<KafkaAgentBinding> bindings = resolveKafkaAgentBindings(kafka);
+        if (bindings.isEmpty()) {
+            LOG.warn("KAFKA_DATABUS_LISTENER_DISABLED reason=no-active-agents");
             return;
         }
 
-        Properties props = new Properties();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers().trim());
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, kafka.getConsumerGroup() == null || kafka.getConsumerGroup().isBlank()
-                ? "integration-api-databus"
-                : kafka.getConsumerGroup().trim());
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, kafka.getAutoOffsetReset() == null || kafka.getAutoOffsetReset().isBlank()
-                ? "latest"
-                : kafka.getAutoOffsetReset().trim());
+        for (KafkaAgentBinding binding : bindings) {
+            if (binding.bootstrapServers().isBlank()) {
+                LOG.warn("KAFKA_DATABUS_AGENT_DISABLED agentId={} reason=bootstrapServers-empty", binding.agentId());
+                continue;
+            }
+            if (binding.inboundTopic().isBlank()) {
+                LOG.warn("KAFKA_DATABUS_AGENT_DISABLED agentId={} reason=inboundTopic-empty", binding.agentId());
+                continue;
+            }
+            Properties props = new Properties();
+            props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, binding.bootstrapServers());
+            props.put(ConsumerConfig.GROUP_ID_CONFIG, binding.consumerGroup());
+            props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+            props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+            props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+            props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, binding.autoOffsetReset());
 
-        this.consumer = new KafkaConsumer<>(props);
-        this.consumer.subscribe(List.of(kafka.getInboundTopic().trim()));
-        this.executor = Executors.newSingleThreadExecutor(r -> {
-            Thread thread = new Thread(r, "kafka-databus-inbound-listener");
-            thread.setDaemon(true);
-            return thread;
-        });
-        running.set(true);
-        this.executor.submit(this::pollLoop);
-        LOG.info("KAFKA_DATABUS_LISTENER_STARTED topic={} groupId={}", kafka.getInboundTopic(), props.get("group.id"));
+            KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
+            consumer.subscribe(List.of(binding.inboundTopic()));
+            ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "kafka-databus-inbound-listener-" + binding.agentId());
+                thread.setDaemon(true);
+                return thread;
+            });
+            ListenerWorker worker = new ListenerWorker(binding, consumer, executor);
+            workers.add(worker);
+            executor.submit(() -> pollLoop(worker));
+            LOG.info("KAFKA_DATABUS_AGENT_STARTED agentId={} topic={} groupId={}",
+                    binding.agentId(), binding.inboundTopic(), binding.consumerGroup());
+        }
+        if (workers.isEmpty()) {
+            LOG.warn("KAFKA_DATABUS_LISTENER_DISABLED reason=no-valid-agents");
+        }
     }
 
     @PreDestroy
     void stop() {
-        running.set(false);
-        if (consumer != null) {
-            consumer.wakeup();
+        for (ListenerWorker worker : workers) {
+            worker.running().set(false);
+            worker.consumer().wakeup();
         }
-        if (executor != null) {
-            executor.shutdown();
+        for (ListenerWorker worker : workers) {
+            worker.executor().shutdown();
             try {
-                if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
-                    executor.shutdownNow();
+                if (!worker.executor().awaitTermination(2, TimeUnit.SECONDS)) {
+                    worker.executor().shutdownNow();
                 }
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
-                executor.shutdownNow();
+                worker.executor().shutdownNow();
             }
-        }
-        if (consumer != null) {
             try {
-                consumer.close(Duration.ofSeconds(1));
+                worker.consumer().close(Duration.ofSeconds(1));
             } catch (Exception ignored) {
                 // noop
             }
         }
+        workers.clear();
     }
 
-    private void pollLoop() {
-        IntegrationGatewayConfiguration.KafkaSettings kafka = configuration.getEventing().getKafka();
-        Duration timeout = Duration.ofMillis(Math.max(100, kafka.getPollTimeoutMillis()));
-        while (running.get()) {
+    private void pollLoop(ListenerWorker worker) {
+        Duration timeout = Duration.ofMillis(Math.max(100, worker.binding().pollTimeoutMillis()));
+        while (worker.running().get()) {
             try {
-                ConsumerRecords<String, String> records = consumer.poll(timeout);
+                ConsumerRecords<String, String> records = worker.consumer().poll(timeout);
                 Map<TopicPartition, OffsetAndMetadata> offsetsToCommit = new HashMap<>();
                 for (ConsumerRecord<String, String> record : records) {
-                    boolean shouldCommit = handleRecord(record);
+                    boolean shouldCommit = handleRecord(record, worker.binding().agentId());
                     if (shouldCommit) {
                         TopicPartition topicPartition = new TopicPartition(record.topic(), record.partition());
                         offsetsToCommit.put(topicPartition, new OffsetAndMetadata(record.offset() + 1));
                     }
                 }
-                commitOffsets(offsetsToCommit);
+                commitOffsets(worker, offsetsToCommit);
             } catch (WakeupException ex) {
-                if (running.get()) {
-                    LOG.warn("KAFKA_DATABUS_LISTENER_WAKEUP_UNEXPECTED message={}", ex.getMessage());
+                if (worker.running().get()) {
+                    LOG.warn("KAFKA_DATABUS_LISTENER_WAKEUP_UNEXPECTED agentId={} message={}",
+                            worker.binding().agentId(), ex.getMessage());
                 }
             } catch (Exception ex) {
-                LOG.warn("KAFKA_DATABUS_LISTENER_ERROR message={}", ex.getMessage());
+                LOG.warn("KAFKA_DATABUS_LISTENER_ERROR agentId={} message={}",
+                        worker.binding().agentId(), ex.getMessage());
             }
         }
     }
 
-    private boolean handleRecord(ConsumerRecord<String, String> record) {
+    private boolean handleRecord(ConsumerRecord<String, String> record, String agentId) {
         try {
             IntegrationEvent event = inboundMapper.map(record.value(), record.topic(), record.partition(), record.offset());
             EventProcessingResult result = dispatcherService.process(event);
-            LOG.info("KAFKA_DATABUS_EVENT_PROCESSED topic={} partition={} offset={} eventId={} status={}",
+            LOG.info("KAFKA_DATABUS_EVENT_PROCESSED agentId={} topic={} partition={} offset={} eventId={} status={}",
+                    agentId,
                     record.topic(),
                     record.partition(),
                     record.offset(),
@@ -160,15 +171,16 @@ public class KafkaDataBusInboundListener {
                     result.status());
             return true;
         } catch (Exception ex) {
-            return processInvalidPayload(record, ex);
+            return processInvalidPayload(record, ex, agentId);
         }
     }
 
-    private boolean processInvalidPayload(ConsumerRecord<String, String> record, Exception rootCause) {
+    private boolean processInvalidPayload(ConsumerRecord<String, String> record, Exception rootCause, String agentId) {
         try {
-            IntegrationEvent invalidEvent = toInvalidPayloadEvent(record, rootCause);
+            IntegrationEvent invalidEvent = toInvalidPayloadEvent(record, rootCause, agentId);
             EventProcessingResult result = dispatcherService.process(invalidEvent);
-            LOG.warn("KAFKA_DATABUS_INVALID_PAYLOAD_DLQ topic={} partition={} offset={} status={} errorType={}",
+            LOG.warn("KAFKA_DATABUS_INVALID_PAYLOAD_DLQ agentId={} topic={} partition={} offset={} status={} errorType={}",
+                    agentId,
                     record.topic(),
                     record.partition(),
                     record.offset(),
@@ -176,7 +188,8 @@ public class KafkaDataBusInboundListener {
                     rootCause == null ? "unknown" : rootCause.getClass().getSimpleName());
             return true;
         } catch (Exception ex) {
-            LOG.warn("KAFKA_DATABUS_EVENT_FAILED topic={} partition={} offset={} errorType={}",
+            LOG.warn("KAFKA_DATABUS_EVENT_FAILED agentId={} topic={} partition={} offset={} errorType={}",
+                    agentId,
                     record.topic(),
                     record.partition(),
                     record.offset(),
@@ -186,13 +199,18 @@ public class KafkaDataBusInboundListener {
     }
 
     IntegrationEvent toInvalidPayloadEvent(ConsumerRecord<String, String> record, Exception rootCause) {
+        return toInvalidPayloadEvent(record, rootCause, "default");
+    }
+
+    IntegrationEvent toInvalidPayloadEvent(ConsumerRecord<String, String> record, Exception rootCause, String agentId) {
         String rawPayload = record.value() == null ? "" : record.value();
         return new IntegrationEvent(
                 "invalid:" + record.topic() + ":" + record.partition() + ":" + record.offset(),
                 "DATABUS_INVALID_PAYLOAD",
-                "kafka-databus",
+                "kafka-databus:" + (agentId == null || agentId.isBlank() ? "default" : agentId),
                 Instant.now(),
                 Map.of(
+                        "agentId", agentId == null || agentId.isBlank() ? "default" : agentId,
                         "topic", record.topic(),
                         "partition", record.partition(),
                         "offset", record.offset(),
@@ -227,16 +245,105 @@ public class KafkaDataBusInboundListener {
         }
     }
 
-    private void commitOffsets(Map<TopicPartition, OffsetAndMetadata> offsetsToCommit) {
+    private void commitOffsets(ListenerWorker worker, Map<TopicPartition, OffsetAndMetadata> offsetsToCommit) {
         if (offsetsToCommit == null || offsetsToCommit.isEmpty()) {
             return;
         }
         try {
-            consumer.commitSync(offsetsToCommit);
+            worker.consumer().commitSync(offsetsToCommit);
         } catch (Exception ex) {
-            LOG.warn("KAFKA_DATABUS_OFFSET_COMMIT_FAILED partitions={} reason={}",
+            LOG.warn("KAFKA_DATABUS_OFFSET_COMMIT_FAILED agentId={} partitions={} reason={}",
+                    worker.binding().agentId(),
                     offsetsToCommit.keySet(),
                     ex.getMessage());
+        }
+    }
+
+    List<KafkaAgentBinding> resolveKafkaAgentBindings(IntegrationGatewayConfiguration.KafkaSettings kafka) {
+        List<IntegrationGatewayConfiguration.AgentKafkaSettings> configuredAgents = kafka.getAgents();
+        if (configuredAgents == null || configuredAgents.isEmpty()) {
+            return List.of(new KafkaAgentBinding(
+                    "default",
+                    trimmed(kafka.getBootstrapServers()),
+                    defaultIfBlank(kafka.getConsumerGroup(), "integration-api-databus"),
+                    defaultIfBlank(kafka.getAutoOffsetReset(), "latest"),
+                    Math.max(100, kafka.getPollTimeoutMillis()),
+                    trimmed(kafka.getInboundTopic())
+            ));
+        }
+        List<KafkaAgentBinding> bindings = new ArrayList<>();
+        for (IntegrationGatewayConfiguration.AgentKafkaSettings agent : configuredAgents) {
+            if (agent == null || !agent.isEnabled()) {
+                continue;
+            }
+            bindings.add(new KafkaAgentBinding(
+                    defaultIfBlank(agent.getId(), "agent-" + (bindings.size() + 1)),
+                    defaultIfBlank(trimmed(agent.getBootstrapServers()), trimmed(kafka.getBootstrapServers())),
+                    defaultIfBlank(agent.getConsumerGroup(), defaultIfBlank(kafka.getConsumerGroup(), "integration-api-databus")),
+                    defaultIfBlank(agent.getAutoOffsetReset(), defaultIfBlank(kafka.getAutoOffsetReset(), "latest")),
+                    agent.getPollTimeoutMillis() > 0 ? agent.getPollTimeoutMillis() : Math.max(100, kafka.getPollTimeoutMillis()),
+                    defaultIfBlank(trimmed(agent.getInboundTopic()), trimmed(kafka.getInboundTopic()))
+            ));
+        }
+        return bindings.stream()
+                .filter(binding -> !binding.bootstrapServers().isBlank())
+                .filter(binding -> !binding.inboundTopic().isBlank())
+                .filter(distinctAgentId())
+                .filter(agentFilter(kafka))
+                .toList();
+    }
+
+    private java.util.function.Predicate<KafkaAgentBinding> distinctAgentId() {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        return binding -> seen.add(binding.agentId());
+    }
+
+    private java.util.function.Predicate<KafkaAgentBinding> agentFilter(IntegrationGatewayConfiguration.KafkaSettings kafka) {
+        IntegrationGatewayConfiguration.KafkaAgentMode mode = kafka.getAgentMode() == null
+                ? IntegrationGatewayConfiguration.KafkaAgentMode.ALL_AGENTS
+                : kafka.getAgentMode();
+        String localAgentId = defaultIfBlank(kafka.getLocalAgentId(), "");
+        Set<String> selected = new LinkedHashSet<>();
+        if (kafka.getSelectedAgentIds() != null) {
+            kafka.getSelectedAgentIds().stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(value -> !value.isBlank())
+                    .forEach(selected::add);
+        }
+        return switch (mode) {
+            case LOCAL_AGENT -> binding -> !localAgentId.isBlank() && localAgentId.equals(binding.agentId());
+            case SELECTED_AGENTS -> binding -> selected.contains(binding.agentId());
+            default -> binding -> true;
+        };
+    }
+
+    private String defaultIfBlank(String value, String defaultValue) {
+        return value == null || value.isBlank() ? defaultValue : value.trim();
+    }
+
+    private String trimmed(String value) {
+        return Objects.toString(value, "").trim();
+    }
+
+    record KafkaAgentBinding(
+            String agentId,
+            String bootstrapServers,
+            String consumerGroup,
+            String autoOffsetReset,
+            long pollTimeoutMillis,
+            String inboundTopic
+    ) {
+    }
+
+    private record ListenerWorker(
+            KafkaAgentBinding binding,
+            KafkaConsumer<String, String> consumer,
+            ExecutorService executor,
+            AtomicBoolean running
+    ) {
+        private ListenerWorker(KafkaAgentBinding binding, KafkaConsumer<String, String> consumer, ExecutorService executor) {
+            this(binding, consumer, executor, new AtomicBoolean(true));
         }
     }
 }

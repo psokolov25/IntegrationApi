@@ -115,6 +115,32 @@ public class BranchStateCache {
         if (incoming.updatedAt() == null) {
             return false;
         }
-        return incoming.updatedAt().isAfter(current.updatedAt());
+        if (incoming.updatedAt().isAfter(current.updatedAt())) {
+            return true;
+        }
+        if (incoming.updatedAt().equals(current.updatedAt())) {
+            return hasStateDelta(incoming, current);
+        }
+        return false;
+    }
+
+    private boolean hasStateDelta(BranchStateDto incoming, BranchStateDto current) {
+        if (!safeEquals(incoming.status(), current.status())) {
+            return true;
+        }
+        if (!safeEquals(incoming.activeWindow(), current.activeWindow())) {
+            return true;
+        }
+        if (incoming.queueSize() != current.queueSize()) {
+            return true;
+        }
+        return !safeEquals(incoming.updatedBy(), current.updatedBy());
+    }
+
+    private boolean safeEquals(String left, String right) {
+        if (left == null) {
+            return right == null;
+        }
+        return left.equals(right);
     }
 }

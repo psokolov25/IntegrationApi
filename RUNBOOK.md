@@ -13,12 +13,17 @@
    - `integration.aggregate-max-branches` (лимит количества **уникальных** `branchIds` после нормализации в `GET /api/queues/aggregate`);
    - `integration.aggregate-request-timeout-millis` (timeout fan-out для `GET /api/queues/aggregate`);
    - `integration.eventing.entity-changed-branch-mapping.*` (eventType/class/paths для гибкого маппинга `ENTITY_CHANGED` → branch-state).
-   - при включении подчиненной шины DataBus (Kafka listener): `integration.eventing.kafka.enabled`, `integration.eventing.kafka.bootstrap-servers`, `integration.eventing.kafka.consumer-group`, `integration.eventing.kafka.auto-offset-reset`, `integration.eventing.kafka.poll-timeout-millis`, `integration.eventing.kafka.inbound-topic`.
+   - при включении подчиненной шины DataBus (Kafka listener): `integration.eventing.kafka.enabled`, `integration.eventing.kafka.bootstrap-servers`, `integration.eventing.kafka.consumer-group`, `integration.eventing.kafka.auto-offset-reset`, `integration.eventing.kafka.poll-timeout-millis`, `integration.eventing.kafka.inbound-topic`;
+   - для multi-agent/региональной схемы использовать `integration.eventing.kafka.agents[*]` (`id`, `enabled`, `bootstrap-servers`, `consumer-group`, `auto-offset-reset`, `poll-timeout-millis`, `inbound-topic`) с fallback на глобальные `integration.eventing.kafka.*`;
+   - выбрать режим работы сервиса:
+     - `integration.eventing.kafka.agent-mode=ALL_AGENTS` — централизованный режим (слушать всех активных agents),
+     - `integration.eventing.kafka.agent-mode=LOCAL_AGENT` + `integration.eventing.kafka.local-agent-id` — режим «часть конкретного агента»,
+     - `integration.eventing.kafka.agent-mode=SELECTED_AGENTS` + `integration.eventing.kafka.selected-agent-ids` — ограниченный набор агентов.
 3. Проверить branch-state API (`/api/branches/*`) и eventing pipeline (`/api/events/*`).
 4. При проблемах консистентности branch-state:
    - проверить корректность DataBus payload;
    - проверить маппинг `VisitManagerBranchStateEventMapper`;
-   - убедиться, что debounce не подавляет нужные refresh.
+   - убедиться, что debounce не подавляет нужные refresh (повтор события с тем же `updatedAt` теперь подавляется только при неизменном payload; если `status/activeWindow/queueSize/updatedBy` изменились — обновление должно применяться).
 5. После любых изменений в коде integration/eventing — запуск `mvn test`.
 
 ### Итерационный playbook развития фич
@@ -226,7 +231,10 @@
   - `scripts[*].saveScriptRequest` для пакетной загрузки скриптов в IDE/Script API.
 - Для one-shot применения сгенерированного набора (REST service + scripts) использовать
   `POST /api/program/studio/operations` с `operation=APPLY_OPENAPI_REST_CLIENTS_TOOLKIT`
-  (`generated` из предыдущего шага + `replaceExisting=true|false`).
+  (`generated` из предыдущего шага + `replaceExisting=true|false`); для безопасного предпросмотра без изменения runtime использовать `dryRun=true`.
+- Для детального dry-preview (решения по каждому script/service до применения) использовать
+  `POST /api/program/studio/operations` с `operation=PREVIEW_OPENAPI_REST_CLIENTS_TOOLKIT_APPLY`
+  (`generated`, `replaceExisting`) — в ответе доступны `preview.externalRestService`, `preview.scripts[]`, `preview.summary`.
 - Перед включением нового broker в прод-контур проверять параметры через
   `POST /api/program/studio/operations` с `operation=VALIDATE_CONNECTOR_CONFIG`
   (`brokerType` + `properties`) и устранять `missingRequiredProperties` и `adapterValidationErrors`

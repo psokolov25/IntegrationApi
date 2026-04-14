@@ -353,16 +353,30 @@ public class StudioOperationsService {
             case APPLY_OPENAPI_REST_CLIENTS_TOOLKIT -> {
                 Map<String, Object> generated = objectMapParam(args.get("generated"));
                 boolean replaceExisting = booleanParam(args.get("replaceExisting"), false);
-                Map<String, Object> scriptsReport = applyGeneratedOpenApiScripts(generated, replaceExisting, subjectId);
-                int appliedServices = applyGeneratedOpenApiExternalService(generated, replaceExisting);
+                boolean dryRun = booleanParam(args.get("dryRun"), false);
+                Map<String, Object> preview = previewGeneratedOpenApiToolkitApply(generated, replaceExisting);
+                Map<String, Object> scriptsReport = applyGeneratedOpenApiScripts(generated, replaceExisting, subjectId, dryRun);
+                int appliedServices = applyGeneratedOpenApiExternalService(generated, replaceExisting, dryRun);
                 yield Map.of(
                         "operation", operation.name(),
                         "replaceExisting", replaceExisting,
+                        "dryRun", dryRun,
+                        "preview", preview,
                         "appliedExternalRestServices", appliedServices,
                         "savedScripts", scriptsReport.get("savedScripts"),
                         "skippedExistingScripts", scriptsReport.get("skippedExistingScripts"),
                         "invalidScripts", scriptsReport.get("invalidScripts"),
                         "serviceId", stringParam(generated.get("serviceId"), "")
+                );
+            }
+            case PREVIEW_OPENAPI_REST_CLIENTS_TOOLKIT_APPLY -> {
+                Map<String, Object> generated = objectMapParam(args.get("generated"));
+                boolean replaceExisting = booleanParam(args.get("replaceExisting"), false);
+                Map<String, Object> preview = previewGeneratedOpenApiToolkitApply(generated, replaceExisting);
+                yield Map.of(
+                        "operation", operation.name(),
+                        "replaceExisting", replaceExisting,
+                        "preview", preview
                 );
             }
             case VALIDATE_GROOVY_SCRIPT_BODY -> {
@@ -896,15 +910,108 @@ public class StudioOperationsService {
         return applied;
     }
 
-    private int applyGeneratedOpenApiExternalService(Map<String, Object> generated, boolean replaceExisting) {
+    private int applyGeneratedOpenApiExternalService(Map<String, Object> generated, boolean replaceExisting, boolean dryRun) {
         Map<String, Object> externalPreset = objectMapParam(generated.get("externalRestServicePreset"));
         if (externalPreset.isEmpty()) {
             return 0;
         }
+        if (dryRun) {
+            String id = stringParam(externalPreset.get("id"), "");
+            if (id.isBlank()) {
+                return 0;
+            }
+            boolean exists = configuration.getProgrammableApi().getExternalRestServices().stream()
+                    .map(IntegrationGatewayConfiguration.ExternalRestServiceSettings::getId)
+                    .anyMatch(id::equals);
+            return (!replaceExisting && exists) ? 0 : 1;
+        }
         return applyExternalRestServices(List.of(externalPreset), replaceExisting);
     }
 
-    private Map<String, Object> applyGeneratedOpenApiScripts(Map<String, Object> generated, boolean replaceExisting, String subjectId) {
+    private Map<String, Object> previewGeneratedOpenApiToolkitApply(Map<String, Object> generated, boolean replaceExisting) {
+        Map<String, Object> externalPreset = objectMapParam(generated.get("externalRestServicePreset"));
+        String externalServiceId = stringParam(externalPreset.get("id"), "");
+        boolean externalServiceExists = !externalServiceId.isBlank() && configuration.getProgrammableApi().getExternalRestServices().stream()
+                .map(IntegrationGatewayConfiguration.ExternalRestServiceSettings::getId)
+                .anyMatch(externalServiceId::equals);
+        boolean willApplyExternalService = !externalPreset.isEmpty()
+                && !externalServiceId.isBlank()
+                && (replaceExisting || !externalServiceExists);
+        String externalServiceDecision = externalPreset.isEmpty()
+                ? "SKIP_EMPTY_PRESET"
+                : externalServiceId.isBlank()
+                ? "SKIP_MISSING_ID"
+                : (!replaceExisting && externalServiceExists)
+                ? "SKIP_EXISTS"
+                : "APPLY";
+
+        List<Map<String, Object>> scripts = mapListParam(generated.get("scripts"));
+        List<Map<String, Object>> scriptDecisions = new java.util.ArrayList<>();
+        int willSaveScripts = 0;
+        int skippedExistingScripts = 0;
+        int invalidScripts = 0;
+        for (Map<String, Object> script : scripts) {
+            Map<String, Object> saveRequest = objectMapParam(script.get("saveScriptRequest"));
+            String scriptId = stringParam(saveRequest.get("scriptId"), stringParam(script.get("scriptId"), ""));
+            String scriptBody = stringParam(saveRequest.get("scriptBody"), stringParam(script.get("scriptBody"), ""));
+            GroovyScriptType type = parseScriptType(stringParam(saveRequest.get("type"), "VISIT_MANAGER_ACTION"));
+            boolean exists = !scriptId.isBlank() && scriptStorage.get(scriptId) != null;
+            boolean missingId = scriptId.isBlank();
+            boolean missingBody = scriptBody.isBlank();
+            Map<String, Object> validation = missingId || missingBody
+                    ? Map.of("ok", false, "message", missingId ? "scriptId обязателен" : "scriptBody обязателен")
+                    : validateGroovyScriptBody(type, scriptBody);
+            boolean valid = Boolean.TRUE.equals(validation.get("ok"));
+            boolean skippedExisting = exists && !replaceExisting;
+            boolean willSave = !missingId && !missingBody && valid && !skippedExisting;
+            String decision = missingId
+                    ? "SKIP_MISSING_ID"
+                    : missingBody
+                    ? "SKIP_MISSING_BODY"
+                    : skippedExisting
+                    ? "SKIP_EXISTS"
+                    : valid
+                    ? "APPLY"
+                    : "SKIP_INVALID";
+            if (willSave) {
+                willSaveScripts++;
+            } else if (skippedExisting) {
+                skippedExistingScripts++;
+            } else if (!valid && !missingId && !missingBody) {
+                invalidScripts++;
+            }
+            scriptDecisions.add(Map.of(
+                    "scriptId", scriptId,
+                    "type", type.name(),
+                    "exists", exists,
+                    "valid", valid,
+                    "decision", decision,
+                    "validationMessage", stringParam(validation.get("message"), "")
+            ));
+        }
+
+        return Map.of(
+                "externalRestService", Map.of(
+                        "id", externalServiceId,
+                        "exists", externalServiceExists,
+                        "decision", externalServiceDecision,
+                        "willApply", willApplyExternalService
+                ),
+                "scripts", List.copyOf(scriptDecisions),
+                "summary", Map.of(
+                        "scriptsTotal", scripts.size(),
+                        "scriptsWillSave", willSaveScripts,
+                        "scriptsSkippedExisting", skippedExistingScripts,
+                        "scriptsInvalid", invalidScripts,
+                        "externalRestServiceWillApply", willApplyExternalService
+                )
+        );
+    }
+
+    private Map<String, Object> applyGeneratedOpenApiScripts(Map<String, Object> generated,
+                                                             boolean replaceExisting,
+                                                             String subjectId,
+                                                             boolean dryRun) {
         List<Map<String, Object>> scripts = mapListParam(generated.get("scripts"));
         int applied = 0;
         int skippedExisting = 0;
@@ -934,14 +1041,16 @@ public class StudioOperationsService {
                 ));
                 continue;
             }
-            scriptStorage.save(new StoredGroovyScript(
-                    scriptId,
-                    type,
-                    scriptBody,
-                    description,
-                    Instant.now(),
-                    subjectId
-            ));
+            if (!dryRun) {
+                scriptStorage.save(new StoredGroovyScript(
+                        scriptId,
+                        type,
+                        scriptBody,
+                        description,
+                        Instant.now(),
+                        subjectId
+                ));
+            }
             applied++;
         }
         return Map.of(
@@ -1361,8 +1470,25 @@ public class StudioOperationsService {
                 "openApiUrl", "https://visitmanager.local/openapi.yml",
                 "serviceId", "visit-manager"
         )),
+        PREVIEW_OPENAPI_REST_CLIENTS_TOOLKIT_APPLY("Предпросмотреть применение generated toolkit OpenAPI-клиентов без изменения runtime", Map.of(
+                "replaceExisting", false,
+                "generated", Map.of(
+                        "serviceId", "visit-manager",
+                        "externalRestServicePreset", Map.of("id", "visit-manager", "baseUrl", "https://visitmanager.local"),
+                        "scripts", List.of(Map.of(
+                                "scriptId", "openapi-visit-manager-get-queues",
+                                "saveScriptRequest", Map.of(
+                                        "scriptId", "openapi-visit-manager-get-queues",
+                                        "type", "VISIT_MANAGER_ACTION",
+                                        "description", "OpenAPI generated script",
+                                        "scriptBody", "return [ok: true]"
+                                )
+                        ))
+                )
+        )),
         APPLY_OPENAPI_REST_CLIENTS_TOOLKIT("Применить generated toolkit OpenAPI-клиентов (REST service + scripts)", Map.of(
                 "replaceExisting", false,
+                "dryRun", false,
                 "generated", Map.of(
                         "serviceId", "visit-manager",
                         "externalRestServicePreset", Map.of("id", "visit-manager", "baseUrl", "https://visitmanager.local"),

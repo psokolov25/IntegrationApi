@@ -321,6 +321,70 @@ class BranchStateUpdatedEventHandlerTest {
         Assertions.assertEquals("sync-a", state.updatedBy());
     }
 
+    @Test
+    void shouldApplySameTimestampEventWhenPayloadChangedInsideDebounceWindow() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.setBranchStateEventRefreshDebounce(Duration.ofSeconds(10));
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+        cfg.setBranchRouting(Map.of("BR-24", "vm-main"));
+
+        GatewayService gatewayService = new GatewayService(
+                new RoutingService(cfg),
+                new StubVisitManagerClient(cfg),
+                new QueueCache(cfg),
+                new BranchStateCache(cfg),
+                new AuditService(),
+                new VisitManagerMetricsService()
+        );
+        MutableClock clock = new MutableClock(Instant.parse("2026-01-10T10:40:00Z"));
+        BranchStateUpdatedEventHandler handler = new BranchStateUpdatedEventHandler(
+                gatewayService, new VisitManagerBranchStateEventMapper(cfg), cfg, clock);
+
+        handler.handle(new IntegrationEvent(
+                "evt-24-a",
+                "branch-state-updated",
+                "vm-main",
+                Instant.parse("2026-01-10T10:40:00Z"),
+                Map.of(
+                        "eventId", "evt-24-a",
+                        "branchId", "BR-24",
+                        "targetVisitManagerId", "vm-main",
+                        "status", "OPEN",
+                        "activeWindow", "09:00-20:00",
+                        "queueSize", 2,
+                        "updatedAt", "2026-01-10T10:40:00Z",
+                        "updatedBy", "sync-a"
+                )
+        ));
+
+        clock.setCurrent(Instant.parse("2026-01-10T10:40:03Z"));
+        handler.handle(new IntegrationEvent(
+                "evt-24-b",
+                "branch-state-updated",
+                "vm-main",
+                Instant.parse("2026-01-10T10:40:03Z"),
+                Map.of(
+                        "eventId", "evt-24-b",
+                        "branchId", "BR-24",
+                        "targetVisitManagerId", "vm-main",
+                        "status", "PAUSED",
+                        "activeWindow", "09:00-20:00",
+                        "queueSize", 6,
+                        "updatedAt", "2026-01-10T10:40:00Z",
+                        "updatedBy", "sync-b"
+                )
+        ));
+
+        var state = gatewayService.getBranchState("subject", "BR-24", "");
+        Assertions.assertEquals("PAUSED", state.status(), "измененный payload должен применяться даже при том же updatedAt");
+        Assertions.assertEquals(6, state.queueSize());
+        Assertions.assertEquals("sync-b", state.updatedBy());
+    }
+
     private static final class MutableClock extends Clock {
         private Instant current;
 

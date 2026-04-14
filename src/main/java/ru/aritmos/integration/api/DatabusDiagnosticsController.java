@@ -46,6 +46,7 @@ public class DatabusDiagnosticsController {
                                          @QueryValue(defaultValue = "false") boolean includeTopTargets) {
         authorize(request);
         EventingStats stats = dispatcherService.stats();
+        int normalizedLimit = Math.max(1, targetLimit);
         return Map.of(
                 "processedCount", stats.processedCount(),
                 "duplicateCount", stats.duplicateCount(),
@@ -53,8 +54,8 @@ public class DatabusDiagnosticsController {
                 "outboxPendingSize", stats.outboxPendingSize(),
                 "outboxFailedSize", stats.outboxFailedSize(),
                 "outboxDeadSize", stats.outboxDeadSize(),
-                "topTargets", includeTopTargets ? List.of() : List.of(),
-                "targetLimit", targetLimit
+                "topTargets", includeTopTargets ? buildTopTargets(normalizedLimit) : List.of(),
+                "targetLimit", normalizedLimit
         );
     }
 
@@ -85,5 +86,25 @@ public class DatabusDiagnosticsController {
         var subject = RequestSecurityContext.current(request)
                 .orElseThrow(() -> new UnauthorizedException("Субъект не аутентифицирован"));
         authorizationService.requirePermission(subject, "event-process");
+    }
+
+    private List<Map<String, Object>> buildTopTargets(int limit) {
+        Map<String, Long> sourceCounters = new java.util.HashMap<>();
+        Stream.concat(
+                        dispatcherService.processedEvents().values().stream(),
+                        retryService.dlqSnapshot().stream())
+                .map(event -> event.source() == null || event.source().isBlank() ? "unknown" : event.source())
+                .forEach(source -> sourceCounters.merge(source, 1L, Long::sum));
+        return sourceCounters.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed()
+                        .thenComparing(Map.Entry.comparingByKey()))
+                .limit(limit)
+                .map(entry -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("target", entry.getKey());
+                    row.put("count", entry.getValue());
+                    return row;
+                })
+                .toList();
     }
 }
