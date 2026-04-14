@@ -77,6 +77,11 @@ mvn exec:java
   - `integration.eventing.state-persistence-enabled=true`;
   - `integration.eventing.state-persistence-path=cache/eventing-state/snapshot.json`;
   - при старте сервис восстанавливает processed/DLQ/outbox из snapshot.
+- Режимы хранилища inbox/outbox (для восстановления после пересборки контейнера):
+  - `integration.eventing.storage.mode=MEMORY|FILE|REDIS`;
+  - для `FILE`: `integration.eventing.storage.file.path=cache/eventing-storage` (рекомендуется монтировать как отдельный volume);
+  - для `REDIS`: `integration.eventing.storage.redis.host/port/database/password/key-prefix` (рекомендуется Redis с персистентным volume/AOF).
+  - это же storage используется для изменяемых runtime-настроек службы (операции Studio `SNAPSHOT_RUNTIME_SETTINGS` / `APPLY_RUNTIME_SETTINGS` / `RESET_RUNTIME_SETTINGS`), чтобы значения переживали пересборку контейнера.
 - Расширение reliability inbox/outbox:
   - outbox поддерживает backoff/dead-state (`outbox-backoff-seconds`, `outbox-max-attempts`);
   - опциональный auto-flush outbox по расписанию (`outbox-auto-flush-enabled`, `outbox-auto-flush-batch-size`, `outbox-auto-flush-interval`);
@@ -100,6 +105,9 @@ mvn exec:java
 - Runtime safety guard:
   - на старте сервис оценивает доступные CPU/RAM среды и при дефиците автоматически снижает рискованные лимиты (`aggregate-max-branches`, `aggregate-request-timeout-millis`, `eventing.max-payload-fields`, `eventing.outbox-auto-flush-batch-size`);
   - статус защиты отражается в `GET /health/readiness` компонентом `runtime-safety` (`UP`/`DEGRADED`).
+- Базовый контур observability readiness:
+  - добавлены настройки `integration.observability.enabled`, `integration.observability.external-sink-required`, `integration.observability.external-sink-url`;
+  - компонент `observability` в `GET /health/readiness` переходит в `DEGRADED`, если внешний sink объявлен обязательным, но URL не задан.
 - Локальный каталог кэшей/инструментария: `cache/` (не коммитится, бинарные артефакты/браузеры/кэш npm).
 - Режим downstream клиента VisitManager:
   - `integration.visit-manager-client.mode=HTTP` — прямые REST-вызовы в VisitManager (`/api/v1/queues/*`, `/api/v1/branches/*/state`) и режим по умолчанию;
@@ -129,7 +137,7 @@ mvn exec:java
 - Eventing слой использует in-memory inbox/outbox store (Kafka/DataBus listener поддержан, persistent store — следующий шаг hardening);
 - Рабочий режим downstream VisitManager для продукта — `HTTP` (режим `STUB` оставлен только для локальных тестов).
 - production-hardening еще впереди.
-- Error contract стандартизован, но пока без централизованной external observability sink.
+- Централизованный external observability sink поддержан на уровне readiness-контура (обязательность/наличие URL); полноценная поставка событий в внешний sink остаётся частью production-hardening.
 
 ## Следующий шаг
 Этап 7: consolidation / production hardening.

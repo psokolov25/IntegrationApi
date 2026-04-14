@@ -1,6 +1,7 @@
 package ru.aritmos.integration.eventing;
 
 import jakarta.inject.Singleton;
+import jakarta.inject.Inject;
 
 import java.time.Instant;
 import java.util.Comparator;
@@ -16,6 +17,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public class EventInboxService {
 
     private final Map<String, InboxEntry> entries = new ConcurrentHashMap<>();
+    private final EventingInboxOutboxStorage storage;
+
+    public EventInboxService() {
+        this(new InMemoryEventingInboxOutboxStorage());
+    }
+
+    @Inject
+    public EventInboxService(EventingInboxOutboxStorage storage) {
+        this.storage = storage;
+        this.entries.putAll(storage.loadInbox());
+    }
 
     public InboxState beginProcessing(String eventId) {
         if (eventId == null || eventId.isBlank()) {
@@ -35,11 +47,13 @@ public class EventInboxService {
             return new InboxEntry(id, current.firstSeenAt(), now, current.attempts() + 1, "PROCESSING", null);
         });
         if ("PROCESSING".equals(updated.status()) && updated.attempts() == 1) {
+            persist();
             return InboxState.FIRST;
         }
         if ("PROCESSING".equals(updated.status())) {
             return InboxState.IN_PROGRESS;
         }
+        persist();
         return InboxState.DUPLICATE;
     }
 
@@ -60,6 +74,7 @@ public class EventInboxService {
                 "PROCESSED",
                 null
         ));
+        persist();
     }
 
     public void markFailed(String eventId, String error) {
@@ -67,6 +82,7 @@ public class EventInboxService {
         Instant now = Instant.now();
         if (current == null) {
             entries.put(eventId, new InboxEntry(eventId, now, now, 1, "FAILED", error));
+            persist();
             return;
         }
         entries.put(eventId, new InboxEntry(
@@ -77,6 +93,7 @@ public class EventInboxService {
                 "FAILED",
                 error
         ));
+        persist();
     }
 
     public boolean contains(String eventId) {
@@ -111,11 +128,15 @@ public class EventInboxService {
                 recovered++;
             }
         }
+        if (recovered > 0) {
+            persist();
+        }
         return recovered;
     }
 
     public void clear() {
         entries.clear();
+        persist();
     }
 
     public int removeAll(Set<String> eventIds) {
@@ -124,6 +145,9 @@ public class EventInboxService {
             if (entries.remove(eventId) != null) {
                 removed++;
             }
+        }
+        if (removed > 0) {
+            persist();
         }
         return removed;
     }
@@ -144,6 +168,9 @@ public class EventInboxService {
             )) == null) {
                 added++;
             }
+        }
+        if (added > 0) {
+            persist();
         }
         return added;
     }
@@ -173,7 +200,14 @@ public class EventInboxService {
                 removed++;
             }
         }
+        if (removed > 0) {
+            persist();
+        }
         return removed;
+    }
+
+    private void persist() {
+        storage.saveInbox(entries);
     }
 
     public enum InboxState {

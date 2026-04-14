@@ -13,6 +13,10 @@
    - `integration.aggregate-max-branches` (лимит количества **уникальных** `branchIds` после нормализации в `GET /api/queues/aggregate`);
    - `integration.aggregate-request-timeout-millis` (timeout fan-out для `GET /api/queues/aggregate`);
    - `integration.eventing.entity-changed-branch-mapping.*` (eventType/class/paths для гибкого маппинга `ENTITY_CHANGED` → branch-state).
+   - `integration.eventing.storage.mode` (`MEMORY|FILE|REDIS`) и профиль выбранного storage:
+     - `FILE`: `integration.eventing.storage.file.path` (должен быть вынесен в persistent volume);
+     - `REDIS`: `integration.eventing.storage.redis.host/port/database/password/key-prefix` (Redis должен быть с персистентностью на volume/AOF/RDB).
+   - `integration.observability.enabled`, `integration.observability.external-sink-required`, `integration.observability.external-sink-url` (готовность внешнего observability sink в `readiness.components.observability`).
    - при включении подчиненной шины DataBus (Kafka listener): `integration.eventing.kafka.enabled`, `integration.eventing.kafka.bootstrap-servers`, `integration.eventing.kafka.consumer-group`, `integration.eventing.kafka.auto-offset-reset`, `integration.eventing.kafka.poll-timeout-millis`, `integration.eventing.kafka.inbound-topic`;
    - для multi-agent/региональной схемы использовать `integration.eventing.kafka.agents[*]` (`id`, `enabled`, `bootstrap-servers`, `consumer-group`, `auto-offset-reset`, `poll-timeout-millis`, `inbound-topic`) с fallback на глобальные `integration.eventing.kafka.*`;
    - выбрать режим работы сервиса:
@@ -37,6 +41,10 @@
 - Liveness: `GET /health/liveness`
 - Readiness: `GET /health/readiness`
 - `GET /health/readiness` возвращает компоненты по ключевым группам (`gateway`, `visit-manager-client`, `federation`, `aggregation`, `eventing`, `security-mode`, `security`, `programmable-api`, `client-policy`, `observability`); `security` отражает корректность конфигурации режима безопасности (например, `API_KEY` без ключей -> `DOWN`, `HYBRID` без API keys и keycloak issuer -> `DEGRADED`).
+- Компонент `observability`:
+  - `UP` — observability включен и не требует обязательного внешнего sink (или URL sink задан);
+  - `DEGRADED` — включена политика `external-sink-required=true`, но не задан `external-sink-url`;
+  - `DISABLED` — observability выключен через `integration.observability.enabled=false`.
 - `GET /health/readiness` дополнительно содержит `runtime-safety`:
   - `UP` — аппаратных ограничений не потребовалось;
   - `DEGRADED` — для защиты от подвисания и перегрузки соседних служб автоматически снижены runtime-лимиты.
@@ -58,6 +66,10 @@
   - `GET /api/program/studio/capabilities` (доступные темы/лимиты и путь персистентности настроек).
   - `GET /api/program/studio/operations/catalog` (каталог операций и templates параметров для GUI).
 - `POST /api/program/studio/operations` (операции: `FLUSH_OUTBOX`, `RECOVER_STALE_INBOX`, `CLEAR_DEBUG_HISTORY`, `EXPORT_DEBUG_HISTORY`, `IMPORT_DEBUG_HISTORY_PREVIEW`, `IMPORT_DEBUG_HISTORY_APPLY`, `REFRESH_BOOTSTRAP`, `SNAPSHOT_INBOX_OUTBOX`, `SNAPSHOT_VISIT_MANAGERS`, `SNAPSHOT_BRANCH_CACHE`, `SNAPSHOT_EXTERNAL_SERVICES`, `SNAPSHOT_RUNTIME_SETTINGS`, `EXPORT_HTTP_PROCESSING_PROFILE`, `IMPORT_HTTP_PROCESSING_PROFILE_PREVIEW`, `IMPORT_HTTP_PROCESSING_PROFILE_APPLY`, `PREVIEW_HTTP_PROCESSING`, `PREVIEW_HTTP_PROCESSING_MATRIX`, `PREVIEW_CONNECTOR_PROFILE`, `PROBE_EXTERNAL_REST_SERVICE`, `VALIDATE_GROOVY_SCRIPT_BODY`, `VALIDATE_CONNECTOR_CONFIG`, `EXPORT_CONNECTOR_PRESETS`, `IMPORT_CONNECTOR_PRESETS_PREVIEW`, `IMPORT_CONNECTOR_PRESETS_DIFF`, `IMPORT_CONNECTOR_PRESETS_APPLY`, `EXPORT_INTEGRATION_CONNECTOR_BUNDLE`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_PREVIEW`, `IMPORT_INTEGRATION_CONNECTOR_BUNDLE_APPLY`, `EXPORT_EDITOR_SETTINGS`, `PREVIEW_EVENTING_MAINTENANCE`, `EXPORT_EVENTING_SNAPSHOT`, `DASHBOARD_SNAPSHOT`).
+- Для изменяемой runtime-конфигурации службы через GUI/IDE использовать:
+  - `operation=SNAPSHOT_RUNTIME_SETTINGS` (текущие значения);
+  - `operation=APPLY_RUNTIME_SETTINGS` (применить + сохранить в выбранное storage inbox/outbox);
+  - `operation=RESET_RUNTIME_SETTINGS` (сброс к baseline значениям старта процесса + сохранить).
 - Каталоги коннекторов/типов:
   - `GET /api/program/connectors/catalog` (включая `supportedBrokerProfiles` с property templates);
   - `GET /api/program/connectors/broker-types` (типы + профили для GUI форм настройки).

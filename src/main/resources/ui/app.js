@@ -3,6 +3,24 @@ const defaultStudioOperationsCatalog = [
     {operation: "RECOVER_STALE_INBOX", description: "Перевести stale PROCESSING inbox-записи в FAILED", parameterTemplate: {}},
     {operation: "CLEAR_DEBUG_HISTORY", description: "Очистить debug history (весь или по scriptId)", parameterTemplate: {scriptId: ""}},
     {operation: "REFRESH_BOOTSTRAP", description: "Получить свежий studio bootstrap snapshot", parameterTemplate: {debugHistoryLimit: 20}},
+    {operation: "SNAPSHOT_RUNTIME_SETTINGS", description: "Получить runtime-срез настроек службы", parameterTemplate: {}},
+    {
+        operation: "APPLY_RUNTIME_SETTINGS",
+        description: "Применить и сохранить runtime-настройки службы",
+        parameterTemplate: {
+            runtimeSettings: {
+                aggregateMaxBranches: 200,
+                aggregateRequestTimeoutMillis: 3000,
+                outboxBackoffSeconds: 5,
+                outboxMaxAttempts: 20,
+                inboxProcessingTimeoutSeconds: 120,
+                outboxAutoFlushBatchSize: 100,
+                maxPayloadFields: 100,
+                httpProcessing: {responseBodyMaxChars: 4000}
+            }
+        }
+    },
+    {operation: "RESET_RUNTIME_SETTINGS", description: "Сбросить runtime-настройки к значениям старта", parameterTemplate: {}},
     {
         operation: "EXPORT_HTTP_PROCESSING_PROFILE",
         description: "Экспорт профиля programmable HTTP processing",
@@ -1038,6 +1056,68 @@ async function saveStudioSettings() {
     setStatus("Studio settings сохранены");
 }
 
+function collectRuntimeConfigPayload() {
+    return {
+        aggregateMaxBranches: Number(el("runtimeAggregateMaxBranchesInput").value || "200"),
+        aggregateRequestTimeoutMillis: Number(el("runtimeAggregateTimeoutInput").value || "3000"),
+        outboxBackoffSeconds: Number(el("runtimeOutboxBackoffInput").value || "5"),
+        outboxMaxAttempts: Number(el("runtimeOutboxAttemptsInput").value || "20"),
+        inboxProcessingTimeoutSeconds: Number(el("runtimeInboxTimeoutInput").value || "120"),
+        outboxAutoFlushBatchSize: Number(el("runtimeOutboxBatchInput").value || "100"),
+        maxPayloadFields: Number(el("runtimeMaxPayloadFieldsInput").value || "100"),
+        httpProcessing: {
+            responseBodyMaxChars: Number(el("runtimeHttpResponseCharsInput").value || "4000")
+        }
+    };
+}
+
+function fillRuntimeConfigForm(snapshot) {
+    const cfg = snapshot || {};
+    el("runtimeAggregateMaxBranchesInput").value = cfg.aggregateMaxBranches ?? 200;
+    el("runtimeAggregateTimeoutInput").value = cfg.aggregateRequestTimeoutMillis ?? 3000;
+    el("runtimeOutboxBackoffInput").value = cfg.outboxBackoffSeconds ?? 5;
+    el("runtimeOutboxAttemptsInput").value = cfg.outboxMaxAttempts ?? 20;
+    el("runtimeInboxTimeoutInput").value = cfg.inboxProcessingTimeoutSeconds ?? 120;
+    el("runtimeOutboxBatchInput").value = cfg.outboxAutoFlushBatchSize ?? 100;
+    el("runtimeMaxPayloadFieldsInput").value = cfg.maxPayloadFields ?? 100;
+    el("runtimeHttpResponseCharsInput").value = cfg.httpProcessing?.responseBodyMaxChars ?? 4000;
+}
+
+async function loadRuntimeConfiguration() {
+    const result = await apiPost("/api/v1/program/studio/operations", {
+        operation: "SNAPSHOT_RUNTIME_SETTINGS",
+        parameters: {}
+    });
+    const snapshot = result.snapshot || {};
+    fillRuntimeConfigForm(snapshot);
+    el("runtimeConfigView").textContent = JSON.stringify(snapshot, null, 2);
+    setStatus("Runtime-конфигурация загружена");
+}
+
+async function applyRuntimeConfiguration() {
+    const result = await apiPost("/api/v1/program/studio/operations", {
+        operation: "APPLY_RUNTIME_SETTINGS",
+        parameters: {
+            runtimeSettings: collectRuntimeConfigPayload()
+        }
+    });
+    const snapshot = result.snapshot || {};
+    fillRuntimeConfigForm(snapshot);
+    el("runtimeConfigView").textContent = JSON.stringify(snapshot, null, 2);
+    setStatus("Runtime-конфигурация применена и сохранена");
+}
+
+async function resetRuntimeConfiguration() {
+    const result = await apiPost("/api/v1/program/studio/operations", {
+        operation: "RESET_RUNTIME_SETTINGS",
+        parameters: {}
+    });
+    const snapshot = result.snapshot || {};
+    fillRuntimeConfigForm(snapshot);
+    el("runtimeConfigView").textContent = JSON.stringify(snapshot, null, 2);
+    setStatus("Runtime-конфигурация сброшена к значениям старта");
+}
+
 function renderStudioOperationCatalog() {
     const select = el("studioOperationInput");
     if (!select) {
@@ -1185,6 +1265,9 @@ function init() {
     el("saveStudioSettingsBtn").onclick = () => saveStudioSettings().catch(e => setStatus(`Ошибка save studio settings: ${e.message}`));
     el("loadStudioOpsCatalogBtn").onclick = () => loadStudioOperationsCatalog().catch(e => setStatus(`Ошибка studio operations catalog: ${e.message}`));
     el("runStudioOperationBtn").onclick = () => runStudioOperation().catch(e => setStatus(`Ошибка studio operation: ${e.message}`));
+    el("loadRuntimeConfigBtn").onclick = () => loadRuntimeConfiguration().catch(e => setStatus(`Ошибка runtime config: ${e.message}`));
+    el("applyRuntimeConfigBtn").onclick = () => applyRuntimeConfiguration().catch(e => setStatus(`Ошибка apply runtime config: ${e.message}`));
+    el("resetRuntimeConfigBtn").onclick = () => resetRuntimeConfiguration().catch(e => setStatus(`Ошибка reset runtime config: ${e.message}`));
     el("studioOperationInput").onchange = () => applyStudioOperationTemplate();
     el("formatPayloadBtn").onclick = () => {
         try {
@@ -1267,6 +1350,7 @@ function init() {
         .then(() => setupEditorExperience())
         .then(() => loadStudioOperationsCatalog())
         .then(() => loadStudioSettings().catch(() => null))
+        .then(() => loadRuntimeConfiguration().catch(() => null))
         .then(() => {
             if (state.anonymousMode) {
                 setStatus(t("anonymousEnabledHint"));

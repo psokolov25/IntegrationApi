@@ -42,6 +42,7 @@ public class IntegrationGatewayConfiguration {
     private ClientPolicySettings clientPolicy = new ClientPolicySettings();
 
     private EventingSettings eventing = new EventingSettings();
+    private ObservabilitySettings observability = new ObservabilitySettings();
 
     private Duration queueCacheTtl = Duration.ofSeconds(30);
     private int aggregateMaxBranches = 200;
@@ -145,6 +146,14 @@ public class IntegrationGatewayConfiguration {
         this.eventing = eventing;
     }
 
+    public ObservabilitySettings getObservability() {
+        return observability;
+    }
+
+    public void setObservability(ObservabilitySettings observability) {
+        this.observability = observability;
+    }
+
     public Duration getQueueCacheTtl() {
         return queueCacheTtl;
     }
@@ -246,6 +255,7 @@ public class IntegrationGatewayConfiguration {
         private int snapshotImportMaxEvents = 50000;
         private boolean snapshotImportRequireMatchingProcessedKeys = true;
         private boolean snapshotImportRejectCrossListDuplicates = true;
+        private EventingStorageSettings storage = new EventingStorageSettings();
         private KafkaSettings kafka = new KafkaSettings();
         private EventWebhookSettings webhook = new EventWebhookSettings();
         private EntityChangedBranchMappingSettings entityChangedBranchMapping = new EntityChangedBranchMappingSettings();
@@ -419,6 +429,14 @@ public class IntegrationGatewayConfiguration {
             this.snapshotImportRejectCrossListDuplicates = snapshotImportRejectCrossListDuplicates;
         }
 
+        public EventingStorageSettings getStorage() {
+            return storage;
+        }
+
+        public void setStorage(EventingStorageSettings storage) {
+            this.storage = storage;
+        }
+
         public EntityChangedBranchMappingSettings getEntityChangedBranchMapping() {
             return entityChangedBranchMapping;
         }
@@ -433,6 +451,133 @@ public class IntegrationGatewayConfiguration {
 
         public void setVisitEventMapping(VisitEventMappingSettings visitEventMapping) {
             this.visitEventMapping = visitEventMapping;
+        }
+    }
+
+    @Introspected
+    public static class EventingStorageSettings {
+        /**
+         * Поддерживаемые режимы: MEMORY, FILE, REDIS.
+         */
+        private String mode = "MEMORY";
+        private EventingStorageFileSettings file = new EventingStorageFileSettings();
+        private EventingStorageRedisSettings redis = new EventingStorageRedisSettings();
+
+        public String getMode() {
+            return mode;
+        }
+
+        public void setMode(String mode) {
+            this.mode = mode;
+        }
+
+        public EventingStorageFileSettings getFile() {
+            return file;
+        }
+
+        public void setFile(EventingStorageFileSettings file) {
+            this.file = file;
+        }
+
+        public EventingStorageRedisSettings getRedis() {
+            return redis;
+        }
+
+        public void setRedis(EventingStorageRedisSettings redis) {
+            this.redis = redis;
+        }
+    }
+
+    @Introspected
+    public static class EventingStorageFileSettings {
+        private String path = "cache/eventing-storage";
+
+        public String getPath() {
+            return path;
+        }
+
+        public void setPath(String path) {
+            this.path = path;
+        }
+    }
+
+    @Introspected
+    public static class EventingStorageRedisSettings {
+        private String host = "localhost";
+        private int port = 6379;
+        private int database = 0;
+        private String password = "";
+        private String keyPrefix = "integration:eventing:storage:";
+
+        public String getHost() {
+            return host;
+        }
+
+        public void setHost(String host) {
+            this.host = host;
+        }
+
+        public int getPort() {
+            return port;
+        }
+
+        public void setPort(int port) {
+            this.port = port;
+        }
+
+        public int getDatabase() {
+            return database;
+        }
+
+        public void setDatabase(int database) {
+            this.database = database;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+
+        public String getKeyPrefix() {
+            return keyPrefix;
+        }
+
+        public void setKeyPrefix(String keyPrefix) {
+            this.keyPrefix = keyPrefix;
+        }
+    }
+
+    @Introspected
+    public static class ObservabilitySettings {
+        private boolean enabled = true;
+        private boolean externalSinkRequired = false;
+        private String externalSinkUrl = "";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public boolean isExternalSinkRequired() {
+            return externalSinkRequired;
+        }
+
+        public void setExternalSinkRequired(boolean externalSinkRequired) {
+            this.externalSinkRequired = externalSinkRequired;
+        }
+
+        public String getExternalSinkUrl() {
+            return externalSinkUrl;
+        }
+
+        public void setExternalSinkUrl(String externalSinkUrl) {
+            this.externalSinkUrl = externalSinkUrl;
         }
     }
 

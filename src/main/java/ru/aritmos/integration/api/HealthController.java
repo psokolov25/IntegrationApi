@@ -70,7 +70,7 @@ public class HealthController {
         components.put("programmable-api", configuration.getProgrammableApi().isEnabled() ? "ENABLED" : "DISABLED");
         components.put("client-policy", resolveClientPolicyStatus());
         components.put("runtime-safety", runtimeSafetyLimitService.readinessStatus());
-        components.put("observability", "UP");
+        components.put("observability", resolveObservabilityStatus());
 
         String status = resolveOverallStatus(components.values());
         return new HealthStatusResponse(
@@ -196,6 +196,17 @@ public class HealthController {
         };
     }
 
+    private String resolveObservabilityStatus() {
+        IntegrationGatewayConfiguration.ObservabilitySettings observability = configuration.getObservability();
+        if (!observability.isEnabled()) {
+            return "DISABLED";
+        }
+        if (!observability.isExternalSinkRequired()) {
+            return "UP";
+        }
+        return hasText(observability.getExternalSinkUrl()) ? "UP" : "DEGRADED";
+    }
+
     private String resolveOverallStatus(Collection<String> componentStates) {
         return componentStates.stream()
                 .anyMatch(state -> "DOWN".equalsIgnoreCase(state) || "DEGRADED".equalsIgnoreCase(state))
@@ -210,6 +221,10 @@ public class HealthController {
     private boolean isVisitManagerEndpointConfigured(IntegrationGatewayConfiguration.VisitManagerInstance vm) {
         return vm.getId() != null && !vm.getId().isBlank()
                 && vm.getBaseUrl() != null && !vm.getBaseUrl().isBlank();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private boolean probeVisitManagers(IntegrationGatewayConfiguration.VisitManagerClientSettings settings) {

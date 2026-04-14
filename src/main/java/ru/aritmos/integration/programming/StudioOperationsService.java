@@ -34,6 +34,7 @@ public class StudioOperationsService {
     private final StudioEditorSettingsService studioEditorSettingsService;
     private final ProgrammableHttpExchangeProcessor httpExchangeProcessor;
     private final IntegrationGatewayConfiguration configuration;
+    private final RuntimeMutableConfigurationService runtimeMutableConfigurationService;
     private final List<CustomerMessageBusAdapter> messageBusAdapters;
     private final GroovyScriptStorage scriptStorage;
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -47,6 +48,7 @@ public class StudioOperationsService {
                                    StudioEditorSettingsService studioEditorSettingsService,
                                    ProgrammableHttpExchangeProcessor httpExchangeProcessor,
                                    IntegrationGatewayConfiguration configuration,
+                                   RuntimeMutableConfigurationService runtimeMutableConfigurationService,
                                    List<CustomerMessageBusAdapter> messageBusAdapters,
                                    GroovyScriptStorage scriptStorage) {
         this.eventDispatcherService = eventDispatcherService;
@@ -55,6 +57,7 @@ public class StudioOperationsService {
         this.studioEditorSettingsService = studioEditorSettingsService;
         this.httpExchangeProcessor = httpExchangeProcessor;
         this.configuration = configuration;
+        this.runtimeMutableConfigurationService = runtimeMutableConfigurationService;
         this.messageBusAdapters = messageBusAdapters;
         this.scriptStorage = scriptStorage;
     }
@@ -67,7 +70,23 @@ public class StudioOperationsService {
                             IntegrationGatewayConfiguration configuration,
                             List<CustomerMessageBusAdapter> messageBusAdapters) {
         this(eventDispatcherService, scriptDebugHistoryService, studioWorkspaceService, studioEditorSettingsService,
-                httpExchangeProcessor, configuration, messageBusAdapters, new InMemoryGroovyScriptStorage());
+                httpExchangeProcessor, configuration,
+                new RuntimeMutableConfigurationService(configuration, new ru.aritmos.integration.eventing.InMemoryEventingInboxOutboxStorage()),
+                messageBusAdapters, new InMemoryGroovyScriptStorage());
+    }
+
+    StudioOperationsService(EventDispatcherService eventDispatcherService,
+                            ScriptDebugHistoryService scriptDebugHistoryService,
+                            StudioWorkspaceService studioWorkspaceService,
+                            StudioEditorSettingsService studioEditorSettingsService,
+                            ProgrammableHttpExchangeProcessor httpExchangeProcessor,
+                            IntegrationGatewayConfiguration configuration,
+                            List<CustomerMessageBusAdapter> messageBusAdapters,
+                            GroovyScriptStorage scriptStorage) {
+        this(eventDispatcherService, scriptDebugHistoryService, studioWorkspaceService, studioEditorSettingsService,
+                httpExchangeProcessor, configuration,
+                new RuntimeMutableConfigurationService(configuration, new ru.aritmos.integration.eventing.InMemoryEventingInboxOutboxStorage()),
+                messageBusAdapters, scriptStorage);
     }
 
     public Map<String, Object> execute(String operationRaw, Map<String, Object> parameters, String subjectId) {
@@ -192,7 +211,20 @@ public class StudioOperationsService {
             );
             case SNAPSHOT_RUNTIME_SETTINGS -> Map.of(
                     "operation", operation.name(),
-                    "snapshot", studioWorkspaceService.buildRuntimeSettingsSnapshot()
+                    "snapshot", runtimeMutableConfigurationService.snapshot()
+            );
+            case APPLY_RUNTIME_SETTINGS -> {
+                Map<String, Object> runtimeSettings = objectMapParam(args.get("runtimeSettings"));
+                yield Map.of(
+                        "operation", operation.name(),
+                        "applied", true,
+                        "snapshot", runtimeMutableConfigurationService.apply(runtimeSettings)
+                );
+            }
+            case RESET_RUNTIME_SETTINGS -> Map.of(
+                    "operation", operation.name(),
+                    "applied", true,
+                    "snapshot", runtimeMutableConfigurationService.resetToDefaults()
             );
             case EXPORT_EDITOR_SETTINGS -> Map.of(
                     "operation", operation.name(),
@@ -250,6 +282,7 @@ public class StudioOperationsService {
                 target.setRequestEnvelopeEnabled(booleanParam(profile.get("requestEnvelopeEnabled"), target.isRequestEnvelopeEnabled()));
                 target.setParseJsonBody(booleanParam(profile.get("parseJsonBody"), target.isParseJsonBody()));
                 target.setResponseBodyMaxChars(intParam(profile.get("responseBodyMaxChars"), target.getResponseBodyMaxChars()));
+                runtimeMutableConfigurationService.persistCurrent();
                 yield Map.of(
                         "operation", operation.name(),
                         "applied", true,
@@ -1408,6 +1441,26 @@ public class StudioOperationsService {
         SNAPSHOT_BRANCH_CACHE("Получить диагностический срез кэша отделений branch-state", Map.of("limit", 50)),
         SNAPSHOT_EXTERNAL_SERVICES("Получить диагностический срез внешних сервисов и брокеров", Map.of()),
         SNAPSHOT_RUNTIME_SETTINGS("Получить runtime-срез настроек контрольной панели", Map.of()),
+        APPLY_RUNTIME_SETTINGS("Применить и сохранить изменяемые runtime-настройки службы", Map.of(
+                "runtimeSettings", Map.of(
+                        "aggregateMaxBranches", 200,
+                        "aggregateRequestTimeoutMillis", 3000,
+                        "outboxBackoffSeconds", 5,
+                        "outboxMaxAttempts", 20,
+                        "inboxProcessingTimeoutSeconds", 120,
+                        "outboxAutoFlushBatchSize", 100,
+                        "maxPayloadFields", 100,
+                        "httpProcessing", Map.of(
+                                "enabled", true,
+                                "addDirectionHeader", true,
+                                "directionHeaderName", "X-Integration-Direction",
+                                "requestEnvelopeEnabled", false,
+                                "responseBodyMaxChars", 4000,
+                                "parseJsonBody", true
+                        )
+                )
+        )),
+        RESET_RUNTIME_SETTINGS("Сбросить runtime-настройки к значениям старта процесса и сохранить в storage", Map.of()),
         EXPORT_EDITOR_SETTINGS("Экспортировать настройки IDE-редактора для GUI backup", Map.of()),
         PREVIEW_EVENTING_MAINTENANCE("Предпросмотр maintenance inbox/outbox/DLQ/processed без изменений", Map.of()),
         EXPORT_EVENTING_SNAPSHOT("Экспортировать snapshot eventing для backup/import", Map.of()),

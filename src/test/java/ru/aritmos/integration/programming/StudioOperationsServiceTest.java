@@ -277,6 +277,41 @@ class StudioOperationsServiceTest {
     }
 
     @Test
+    void shouldApplyAndResetRuntimeSettingsOperations(@TempDir Path tempDir) {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        StudioOperationsService service = new StudioOperationsService(
+                buildDispatcher(),
+                new ScriptDebugHistoryService(),
+                buildWorkspaceServiceWithConnectors(),
+                new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json")),
+                buildProcessor(),
+                cfg,
+                buildAdapters()
+        );
+
+        Map<String, Object> applied = service.execute("APPLY_RUNTIME_SETTINGS", Map.of(
+                "runtimeSettings", Map.of(
+                        "aggregateMaxBranches", 55,
+                        "aggregateRequestTimeoutMillis", 1600,
+                        "outboxBackoffSeconds", 4,
+                        "outboxMaxAttempts", 11,
+                        "inboxProcessingTimeoutSeconds", 77,
+                        "outboxAutoFlushBatchSize", 44,
+                        "maxPayloadFields", 120,
+                        "httpProcessing", Map.of("responseBodyMaxChars", 3500)
+                )
+        ), "tester");
+        Assertions.assertEquals("APPLY_RUNTIME_SETTINGS", applied.get("operation"));
+        Assertions.assertEquals(55, cfg.getAggregateMaxBranches());
+        Assertions.assertEquals(44, cfg.getEventing().getOutboxAutoFlushBatchSize());
+
+        Map<String, Object> reset = service.execute("RESET_RUNTIME_SETTINGS", Map.of(), "tester");
+        Assertions.assertEquals("RESET_RUNTIME_SETTINGS", reset.get("operation"));
+        Map<String, Object> snapshot = cast(reset.get("snapshot"));
+        Assertions.assertTrue(snapshot.containsKey("aggregateMaxBranches"));
+    }
+
+    @Test
     void shouldExportEditorSettingsOperation(@TempDir Path tempDir) {
         StudioEditorSettingsService settingsService = new StudioEditorSettingsService(new ObjectMapper(), tempDir.resolve("editor-settings.json"));
         settingsService.save("tester", new ru.aritmos.integration.domain.StudioEditorSettingsDto("dark", 15, true, true, "s-1", null));
