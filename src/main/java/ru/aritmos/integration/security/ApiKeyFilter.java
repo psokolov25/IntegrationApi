@@ -33,7 +33,7 @@ public class ApiKeyFilter implements HttpServerFilter {
     @Override
     public Publisher<MutableHttpResponse<?>> doFilter(HttpRequest<?> request, ServerFilterChain chain) {
         String path = request.getPath();
-        if (path.startsWith("/health") || path.startsWith("/swagger") || path.startsWith("/swagger-ui") || path.startsWith("/openapi") || path.startsWith("/ui") || path.startsWith("/api/v1/auth/token")) {
+        if (path.startsWith("/health") || path.startsWith("/swagger") || path.startsWith("/swagger-ui") || path.startsWith("/openapi") || path.startsWith("/ui") || path.startsWith("/api/v2/auth/token")) {
             return chain.proceed(request);
         }
         if (configuration.getAnonymousAccess().isEnabled()) {

@@ -35,7 +35,7 @@ class ApiKeyFilterTest {
             return Publishers.just(HttpResponse.ok());
         };
 
-        HttpRequest<?> request = HttpRequest.GET("/api/v1/events/stats");
+        HttpRequest<?> request = HttpRequest.GET("/api/v2/events/stats");
         filter.doFilter(request, chain);
 
         Assertions.assertTrue(proceedCalled.get());
@@ -61,7 +61,7 @@ class ApiKeyFilterTest {
             return Publishers.just(HttpResponse.ok());
         };
 
-        HttpRequest<?> request = HttpRequest.GET("/api/v1/events/stats");
+        HttpRequest<?> request = HttpRequest.GET("/api/v2/events/stats");
         filter.doFilter(request, chain);
 
         Assertions.assertTrue(authCalled.get());

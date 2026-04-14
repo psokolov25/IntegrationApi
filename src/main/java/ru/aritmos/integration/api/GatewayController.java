@@ -40,7 +40,7 @@ import java.util.List;
  * Контроллер унифицированного REST API для операций VisitManager.
  */
 @Validated
-@Controller("/api/v1")
+@Controller("/api/v2")
 @Tag(name = "Integration Gateway", description = "Интеграционные операции с VisitManager")
 public class GatewayController {
 

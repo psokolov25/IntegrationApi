@@ -12,7 +12,7 @@ class GlobalExceptionHandlerTest {
 
     @Test
     void shouldReturnUnauthorizedForApiException() {
-        HttpRequest<?> request = HttpRequest.GET("/api/v1/events/dlq");
+        HttpRequest<?> request = HttpRequest.GET("/api/v2/events/dlq");
         var response = handler.handle(request, new UnauthorizedException("Нет авторизации"));
 
         Assertions.assertEquals(HttpStatus.UNAUTHORIZED, response.status());

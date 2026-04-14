@@ -13,7 +13,7 @@ import ru.aritmos.integration.security.internal.InternalAuthApplicationService;
 /**
  * Internal auth endpoint для technical clients.
  */
-@Controller("/api/v1/auth")
+@Controller("/api/v2/auth")
 @Tag(name = "Internal Auth", description = "Внутренняя аутентификация технических клиентов")
 public class AuthController {
 
