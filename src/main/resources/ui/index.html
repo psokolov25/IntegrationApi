@@ -98,6 +98,23 @@
             <input id="studioOperationParamsInput" value="{\"limit\":100}" class="inline-json-input"/>
             <button id="runStudioOperationBtn" data-i18n="studioRunOperation">Выполнить operation</button>
         </div>
+        <h3 data-i18n="runtimeConfigTitle">Runtime-конфигурация службы</h3>
+        <div class="form-grid">
+            <label>aggregateMaxBranches <input id="runtimeAggregateMaxBranchesInput" type="number" min="1" value="200"/></label>
+            <label>aggregateRequestTimeoutMillis <input id="runtimeAggregateTimeoutInput" type="number" min="1" value="3000"/></label>
+            <label>outboxBackoffSeconds <input id="runtimeOutboxBackoffInput" type="number" min="1" value="5"/></label>
+            <label>outboxMaxAttempts <input id="runtimeOutboxAttemptsInput" type="number" min="1" value="20"/></label>
+            <label>inboxProcessingTimeoutSeconds <input id="runtimeInboxTimeoutInput" type="number" min="1" value="120"/></label>
+            <label>outboxAutoFlushBatchSize <input id="runtimeOutboxBatchInput" type="number" min="1" value="100"/></label>
+            <label>maxPayloadFields <input id="runtimeMaxPayloadFieldsInput" type="number" min="1" value="100"/></label>
+            <label>http.responseBodyMaxChars <input id="runtimeHttpResponseCharsInput" type="number" min="1" value="4000"/></label>
+        </div>
+        <div class="actions-row">
+            <button id="loadRuntimeConfigBtn" data-i18n="runtimeConfigLoad">Загрузить runtime-конфигурацию</button>
+            <button id="applyRuntimeConfigBtn" data-i18n="runtimeConfigApply">Применить runtime-конфигурацию</button>
+            <button id="resetRuntimeConfigBtn" data-i18n="runtimeConfigReset">Сбросить runtime-конфигурацию</button>
+        </div>
+        <pre id="runtimeConfigView" class="mono"></pre>
         <pre id="studioBootstrapView" class="mono"></pre>
         <pre id="studioSettingsView" class="mono"></pre>
         <pre id="studioOperationView" class="mono"></pre>

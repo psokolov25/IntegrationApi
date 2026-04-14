@@ -428,4 +428,62 @@ class HealthControllerTest {
             server.stop(0);
         }
     }
+
+    @Test
+    void shouldReturnDegradedWhenExternalObservabilitySinkIsRequiredButMissing() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().setEnabled(false);
+        cfg.setApiKeys(List.of("dev-key"));
+        cfg.getObservability().setEnabled(true);
+        cfg.getObservability().setExternalSinkRequired(true);
+        cfg.getObservability().setExternalSinkUrl(" ");
+
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+
+        EventDispatcherService dispatcher = new EventDispatcherService(
+                cfg,
+                new EventInboxService(),
+                new EventRetryService(),
+                new EventStoreService(),
+                event -> {},
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+        HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
+
+        var readiness = controller.readiness();
+        Assertions.assertEquals("DEGRADED", readiness.status());
+        Assertions.assertEquals("DEGRADED", readiness.components().get("observability"));
+    }
+
+    @Test
+    void shouldReturnDisabledWhenObservabilityIsSwitchedOff() {
+        IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+        cfg.getEventing().setEnabled(false);
+        cfg.setApiKeys(List.of("dev-key"));
+        cfg.getObservability().setEnabled(false);
+
+        IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+        vm.setId("vm-main");
+        vm.setBaseUrl("http://localhost");
+        vm.setActive(true);
+        cfg.setVisitManagers(List.of(vm));
+
+        EventDispatcherService dispatcher = new EventDispatcherService(
+                cfg,
+                new EventInboxService(),
+                new EventRetryService(),
+                new EventStoreService(),
+                event -> {},
+                List.of(new DefaultVisitCreatedEventHandler())
+        );
+        HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
+
+        var readiness = controller.readiness();
+        Assertions.assertEquals("UP", readiness.status());
+        Assertions.assertEquals("DISABLED", readiness.components().get("observability"));
+    }
 }

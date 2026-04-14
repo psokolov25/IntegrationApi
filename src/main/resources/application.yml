@@ -77,8 +77,22 @@ integration:
     timeout-millis: 1000
     circuit-failure-threshold: 3
     circuit-open-seconds: 10
+  observability:
+    enabled: true
+    external-sink-required: false
+    external-sink-url: ""
   eventing:
     enabled: true
+    storage:
+      mode: MEMORY # MEMORY | FILE | REDIS
+      file:
+        path: cache/eventing-storage
+      redis:
+        host: localhost
+        port: 6379
+        database: 0
+        password: ""
+        key-prefix: "integration:eventing:storage:"
     state-persistence-enabled: true
     state-persistence-path: cache/eventing-state/snapshot.json
     outbox-backoff-seconds: 5
