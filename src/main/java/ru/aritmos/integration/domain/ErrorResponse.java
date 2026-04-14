@@ -19,7 +19,7 @@ public record ErrorResponse(
         int status,
         @Schema(description = "HTTP-метод запроса.", example = "POST")
         String method,
-        @Schema(description = "Путь запроса.", example = "/api/v1/events/ingest")
+        @Schema(description = "Путь запроса.", example = "/api/events/ingest")
         String path,
         @Schema(description = "Время формирования ошибки (UTC, ISO-8601).")
         Instant timestamp,

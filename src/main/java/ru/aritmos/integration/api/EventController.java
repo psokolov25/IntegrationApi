@@ -41,7 +41,7 @@ import java.util.stream.Stream;
 /**
  * Event ingestion API для этапа 6.
  */
-@Controller("/api/v1/events")
+@Controller("/api/events")
 @Tag(name = "Eventing", description = "Event-driven integration endpoints")
 public class EventController {
 

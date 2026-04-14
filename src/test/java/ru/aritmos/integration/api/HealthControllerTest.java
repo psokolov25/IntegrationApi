@@ -389,4 +389,43 @@ class HealthControllerTest {
             server.stop(0);
         }
     }
+
+    @Test
+    void shouldTrimVisitManagerBaseUrlAndProbePathBeforeReadinessProbe() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/health/readiness", exchange -> {
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            IntegrationGatewayConfiguration cfg = new IntegrationGatewayConfiguration();
+            cfg.getEventing().setEnabled(false);
+            cfg.setApiKeys(List.of("dev-key"));
+            cfg.getVisitManagerClient().setMode("HTTP");
+            cfg.getVisitManagerClient().setReadinessProbeEnabled(true);
+            cfg.getVisitManagerClient().setReadinessProbePath("  health/readiness  ");
+            IntegrationGatewayConfiguration.VisitManagerInstance vm = new IntegrationGatewayConfiguration.VisitManagerInstance();
+            vm.setId("vm-main");
+            vm.setBaseUrl("  http://localhost:" + server.getAddress().getPort() + "  ");
+            vm.setActive(true);
+            cfg.setVisitManagers(List.of(vm));
+
+            EventDispatcherService dispatcher = new EventDispatcherService(
+                    cfg,
+                    new EventInboxService(),
+                    new EventRetryService(),
+                    new EventStoreService(),
+                    event -> {},
+                    List.of(new DefaultVisitCreatedEventHandler())
+            );
+            HealthController controller = new HealthController(cfg, dispatcher, new RuntimeSafetyLimitService(cfg, new RuntimeHardwareProbe()));
+
+            var readiness = controller.readiness();
+            Assertions.assertEquals("UP", readiness.status());
+            Assertions.assertEquals("UP", readiness.components().get("visit-manager-client"));
+        } finally {
+            server.stop(0);
+        }
+    }
 }

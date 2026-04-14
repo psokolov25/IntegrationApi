@@ -64,7 +64,7 @@ import java.util.Map;
 /**
  * Контроллер programmable endpoints (декларативная модель).
  */
-@Controller("/api/v1/program")
+@Controller("/api/program")
 @Tag(name = "Programmable API", description = "Декларативные кастомные endpoints для интеграций")
 public class ProgrammableController {
 
